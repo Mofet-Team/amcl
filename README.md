@@ -68,6 +68,10 @@ parameter lists and enumerations.
       one ENB or heading, KEEPENB with handlers, two ALARM clauses, a RESTART in an EMERGENCY
       handler or twice in one handler, RESUME outside RESTART, a GOTO STEP across RESTART, and
       WHEN ERROR on INITIATE of the program's own handler.
+    - Points: a point used as `XV1.PV` or in a state change (`OPEN XV1`) that is not declared
+      EXTERNAL; a state change of a LOCAL or of more than 16 points; and a word alone on a line.
+      A state change is the one statement without a keyword, so stray words and typos read as
+      one: `asdf qwer` is reported as an undeclared point QWER.
     - Structure: statements before the first STEP of a routine that has steps, a phase, step,
       handler or subroutine with no statements, and a sequence that INITIATEs itself.
     - CALL: the number of arguments (also for built-in functions and subroutines), at most 32,
@@ -212,6 +216,7 @@ Bug reports are welcome!
 ### Unreleased
 
 - Formatting in each file's own style, with rules from `.clformat.json`.
+- Stray words and points used without an EXTERNAL are reported.
 - Listings opened on their own start the extension.
 
 ### 0.5.0

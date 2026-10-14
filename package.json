@@ -148,6 +148,8 @@
               "external-ucn",
               "prefetch",
               "line-length",
+              "state-change",
+              "undeclared-point",
               "compiler-error",
               "compiler-warning",
               "compiler-note",

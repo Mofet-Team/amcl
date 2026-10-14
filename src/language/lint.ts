@@ -51,6 +51,7 @@ class Linter {
   private readonly handlerTypes = new Map<string, string>();
   /** True while checking a handler's RESTART section. */
   private inRestart = false;
+  private readonly undeclared = new Set<Ident>();
   /** Subroutines of the file by name, for checking CALLs. */
   private readonly subroutines = new Map<string, Extract<Unit, { kind: 'subroutine' }>>();
 
@@ -225,6 +226,7 @@ class Linter {
         break;
       case 'stateChange':
         s.targets.forEach(e);
+        if (dialect && dialect !== 'AM') this.stateChange(s);
         // State change targets must be in this HPM (HP27-610 §3.2.5).
         for (const t of s.targets) if (t.kind === 'name') this.remoteAccess(t.id, unit, dialect, bound, s);
         if (s.onError) nested(s.onError.statement);
@@ -464,6 +466,42 @@ class Linter {
     }
   }
 
+  /**
+   * `OPEN XV1, XV2`: the only statement without a keyword, so a stray word lands here. It names
+   * up to 16 points declared EXTERNAL: Digital Output, Digital Composite or Device Control
+   * points [HP27-610 §3.2.5].
+   */
+  private stateChange(s: Extract<Statement, { kind: 'stateChange' }>): void {
+    if (!s.targets.length) {
+      this.report(s.state.range, 'state-change', `${s.state.text} is not a statement; a state change names its points, as in OPEN XV1`, Severity.Error);
+      return;
+    }
+    if (s.targets.length > MAX_STATE_CHANGE_POINTS) {
+      this.report(s.targets[MAX_STATE_CHANGE_POINTS].range, 'state-change', `A state change sets at most ${MAX_STATE_CHANGE_POINTS} points (HP27-610 §3.2.5)`, Severity.Error);
+    }
+    for (const t of s.targets) {
+      if (t.kind !== 'name' || /^[!$]/.test(t.id.name)) continue;
+      const sym = this.resolved.get(t.id);
+      if (!sym) {
+        this.report(t.id.range, 'state-change', `${t.id.text} is not declared EXTERNAL: ${s.state.text} ${t.id.text} reads as a state change of point ${t.id.text}`, Severity.Error);
+      } else if (sym.kind !== 'external') {
+        this.report(t.id.range, 'state-change', `${t.id.text} is a ${sym.kind === 'local' ? 'LOCAL' : sym.kind}: a state change sets the OP of a point (HP27-610 §3.2.5)`, Severity.Error);
+      } else {
+        const p = this.env?.point(t.id.name);
+        if (p && !STATE_CHANGE_TYPES.has(p.type)) {
+          this.report(t.id.range, 'state-change', `The point database has ${t.id.text} as ${typeName(p.type)}: a state change sets the OP of a Digital Output, Digital Composite or Device Control`, Severity.Warning);
+        }
+      }
+    }
+  }
+
+  /** A point named in `point.param` is declared EXTERNAL, unless it is the program's own [HP27-610 §2.6.4]. */
+  private pointDeclared(id: Ident, bound: string | undefined): void {
+    if (/^[!$]/.test(id.name) || id.name === bound || this.resolved.get(id) || this.undeclared.has(id)) return;
+    this.undeclared.add(id);
+    this.report(id.range, 'undeclared-point', `${id.text} is not declared EXTERNAL`, Severity.Error);
+  }
+
   // ---------------------------------------------------------------- point database
 
   /** A database point's parameter exists on its point type [HP09-641, XPM09]. */
@@ -614,7 +652,10 @@ class Linter {
         if (b && b.kind !== 'subroutine') this.arity(x.callee.id, x.args.length, b);
       }
       if (x.kind === 'member' && x.object.kind === 'name') {
-        if (dialect && dialect !== 'AM') this.parameterExists(x.object.id, x.property);
+        if (dialect && dialect !== 'AM') {
+          this.parameterExists(x.object.id, x.property);
+          this.pointDeclared(x.object.id, bound);
+        }
         this.boundPrefix(x.object.id, bound, dialect);
         if (!remoteAllowed) this.remoteAccess(x.object.id, unit, dialect, bound, stmt);
       }
@@ -896,6 +937,8 @@ const LOGICAL_OPS = new Set(['AND', 'OR', 'XOR']);
 
 const MAX_CALL_ARGS = 32;
 const PREFETCH_LIMIT = 12;
+const MAX_STATE_CHANGE_POINTS = 16;
+const STATE_CHANGE_TYPES = new Set(['DOUTNIM', 'DICMPNIM', 'DEVCTLNIM']);
 /** Point types that live in I/O modules, whose parameters are prefetched. */
 const IO_TYPES = new Set(['ANINNIM', 'ANOUTNIM', 'DIINNIM', 'DOUTNIM']);
 /** AI parameters read without a prefetch [HP27-610 §2.5.5]. */

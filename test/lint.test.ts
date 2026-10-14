@@ -364,3 +364,37 @@ describe('lint: line length', () => {
     expect(longLines([`    SET A = ${'1 + '.repeat(25)}1`], 95).map((x) => x.message)).toEqual(['This line is longer than 95 characters (amcl.lineLength)']);
   });
 });
+
+describe('lint: stray words and undeclared points', () => {
+  const found = (body: string, decls = 'EXTERNAL XV1') =>
+    check(`SEQUENCE S (HPM; POINT S)\n${decls}\nPHASE P\n${body}\nEND S`).filter((m) => /^(state-change|undeclared-point)/.test(m));
+
+  it('accepts state changes of declared points', () => {
+    expect(found('OPEN XV1\nCLOSE XV1 (WHEN ERROR FAIL)')).toEqual([]);
+  });
+
+  it('reports a word alone, which is not a statement', () => {
+    expect(found('asdf')).toEqual(['state-change: asdf is not a statement; a state change names its points, as in OPEN XV1']);
+  });
+
+  it('reports words that read as a state change of an undeclared point', () => {
+    expect(found('hello world')).toEqual([
+      'state-change: world is not declared EXTERNAL: hello world reads as a state change of point world',
+    ]);
+    expect(found('OPEN N', 'EXTERNAL XV1\nLOCAL N AT NN(1)')).toEqual(['state-change: N is a LOCAL: a state change sets the OP of a point (HP27-610 §3.2.5)']);
+  });
+
+  it('allows at most 16 points in one state change', () => {
+    const names = Array.from({ length: 17 }, (_, i) => `V${i}`);
+    expect(found(`OPEN ${names.join(', ')}`, `EXTERNAL ${names.join(', ')}`)).toEqual(['state-change: A state change sets at most 16 points (HP27-610 §3.2.5)']);
+  });
+
+  it('reports each use of a point without an EXTERNAL', () => {
+    expect(found('SET XV2.OP = ON\nIF XV2.PV = ON THEN SET S.NN(1) = 1')).toEqual(['undeclared-point: XV2 is not declared EXTERNAL', 'undeclared-point: XV2 is not declared EXTERNAL']);
+    expect(found('SET !BOX.NN(1) = $NM01N05.NN(1)')).toEqual([]);
+  });
+
+  it('leaves CL/AM alone, where a state word alone sets the bound point', () => {
+    expect(check('BLOCK B (POINT B; AT GENERAL)\nON\nEND B').filter((m) => /^(state-change|undeclared-point)/.test(m))).toEqual([]);
+  });
+});
