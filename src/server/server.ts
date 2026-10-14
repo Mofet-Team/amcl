@@ -139,6 +139,16 @@ async function loadPointDatabase(): Promise<void> {
   }
   index.setNetworks(networks);
   connection.console.info(`amcl: point database: ${index.pointCount} points from ${files.length} .EB files`);
+  warnIfMissing('amcl.pointDatabase', settings.pointDatabase, files.length > 0);
+  warnIfMissing('amcl.networkConfig', settings.networkConfig, networks.length > 0);
+}
+
+/** A setting that names folders, none of which hold anything here: often a path from another machine. */
+function warnIfMissing(name: string, entries: string[] | undefined, found: boolean): void {
+  if (found || !entries?.length) return;
+  const message = `${name}: nothing found in ${entries.join(', ')}. Add the folder as it is on this machine; entries that do not exist are skipped.`;
+  connection.console.warn(`amcl: ${message}`);
+  void connection.window.showWarningMessage(message);
 }
 
 async function indexWorkspace(): Promise<void> {
