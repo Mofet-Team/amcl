@@ -190,14 +190,20 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
-### Unreleased
+### 0.5.0
 
-- About 25 compiler errors caught while editing: LOCAL locations and types, loop counters and
-  REPEATs, handler types and RESTART sections, PHASE headings, routine structure, and CALL
-  arguments; with the point database, parameters a point type does not have, view-only
-  stores, INITIATE targets, EXTERNALs on another UCN, and I/O prefetch limits.
-- Compiler listings: `.LS` and `.LE` messages on the source, workspace-wide `.LE` errors in the
-  Problems panel, and diagnostics, outline, hover and go to source inside listings.
+- Compiler errors caught while editing, checked against sources that compiled: LOCAL locations
+  and types, loop counters and REPEATs, handler types and RESTART sections, PHASE headings,
+  routine structure, and CALL arguments.
+- With the point database: parameters a point type does not have, stores to view-only
+  parameters, INITIATE of points that are not process modules, EXTERNALs on another UCN, and
+  I/O prefetch limits.
+- Code past column 132, which the compiler drops without a message; `amcl.lineLength`.
+- Compiler listings: `.LS` and `.LE` messages on the source lines they are about, `.LE` errors of
+  every source in the Problems panel, and the ~400 compiler messages explained on hover.
+- Listings navigate like their source: hovers, go to definition, references and an outline of
+  units, phases and steps. Old CL/AM listing layouts are read in full.
+- A warning when the point database or network folders hold nothing on this machine.
 - ESLint, and a CI workflow that checks every push and builds the package for a tagged release.
 
 ### 0.4.0
