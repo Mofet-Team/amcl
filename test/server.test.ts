@@ -83,6 +83,18 @@ describe.skipIf(!fs.existsSync(serverPath))('language server over stdio', () => 
     expect(d.diagnostics.find((x: any) => x.message === 'STATES is defined but not referenced')).toMatchObject({ code: 'unused', tags: [1], severity: 2 });
   });
 
+  it('reports code past column 132 in a CL file', async () => {
+    const longUri = 'file:///LONG.CL';
+    const text = `SEQUENCE L (HPM; POINT L)\nPHASE P\n${' '.repeat(136)}EXIT\nEND L`;
+    client.notify('textDocument/didOpen', { textDocument: { uri: longUri, languageId: 'cl', version: 1, text } });
+    let d: any[] = [];
+    for (let i = 0; i < 100 && !d.length; i++) {
+      d = client.notifications.filter((n) => n.method === 'textDocument/publishDiagnostics' && n.params.uri === longUri).flatMap((n) => n.params.diagnostics);
+      if (!d.length) await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(d.find((x: any) => x.code === 'line-length')).toMatchObject({ severity: 2, range: { start: { line: 2, character: 132 } } });
+  });
+
   it('answers documentSymbol, definition and foldingRange', async () => {
     const symbols = await client.request('textDocument/documentSymbol', { textDocument: { uri } });
     expect(symbols.map((s: any) => s.name)).toEqual(['REACT1', 'HLD1', 'SHDN1', 'CHECK']);
