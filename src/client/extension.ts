@@ -46,6 +46,10 @@ async function createFormatRules(): Promise<void> {
     void window.showInformationMessage('Open a CL file to take its formatting rules from.');
     return;
   }
+  if (editor.document.uri.scheme !== 'file') {
+    void window.showInformationMessage('Save the file first: the rules are written to its folder.');
+    return;
+  }
   const target = Uri.joinPath(Uri.file(path.dirname(editor.document.uri.fsPath)), '.clformat.json');
   if (fs.existsSync(target.fsPath)) {
     const answer = await window.showWarningMessage(`${target.fsPath} exists. Replace it?`, { modal: true }, 'Replace');

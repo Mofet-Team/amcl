@@ -60,6 +60,43 @@ function movable(physical: string[], lines: LogicalLine[]): { line: LogicalLine;
   });
 }
 
+/**
+ * Options read from a .clformat.json, keeping only values of the right type and range. Returns the
+ * options and a description of each value left out.
+ */
+export function readFormatRules(raw: unknown): { options: FormatOptions; problems: string[] } {
+  const options: FormatOptions = {};
+  const problems: string[] = [];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { options, problems: ['the file is not a JSON object'] };
+  const r = raw as Record<string, unknown>;
+  const column = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 200;
+  if (r.columns !== undefined) {
+    if (!r.columns || typeof r.columns !== 'object' || Array.isArray(r.columns)) problems.push('"columns" is not an object');
+    else {
+      options.columns = {};
+      for (const [k, v] of Object.entries(r.columns)) {
+        if (!(LINE_KINDS as readonly string[]).includes(k)) problems.push(`"columns.${k}" is not a kind of line`);
+        else if (!column(v)) problems.push(`"columns.${k}" must be a whole number from 0 to 200`);
+        else options.columns[k as LineKind] = v as number;
+      }
+    }
+  }
+  for (const key of ['trimTrailingSpaces', 'uppercaseKeywords'] as const) {
+    if (r[key] === undefined) continue;
+    if (typeof r[key] === 'boolean') options[key] = r[key] as boolean;
+    else problems.push(`"${key}" must be true or false`);
+  }
+  if (r.maxLineLength !== undefined) {
+    const v = r.maxLineLength;
+    if (typeof v === 'number' && Number.isInteger(v) && v >= 40) options.maxLineLength = v;
+    else problems.push('"maxLineLength" must be a whole number of 40 or more');
+  }
+  for (const k of Object.keys(r)) {
+    if (!['columns', 'trimTrailingSpaces', 'uppercaseKeywords', 'maxLineLength'].includes(k)) problems.push(`"${k}" is not a formatting rule`);
+  }
+  return { options, problems };
+}
+
 /** The column each kind of line is most often at in this file. */
 export function learnColumns(text: string): Partial<Record<LineKind, number>> {
   const physical = text.split(/\r?\n|\r/);

@@ -425,7 +425,7 @@ describe('lint: undefined names on the right of =', () => {
     // A state written against THEN reads as one name, and the IF loses its THEN.
     const a = analyze('SEQUENCE S (HPM; POINT S)\nEXTERNAL XV1\nPHASE P\nIF XV1.PV=\u05d9\u05d3\u05e0\u05d9THEN\n&  (SET XV1.MODATTR = PROGRAM;\n&  GOTO C)\nC: EXIT\nEND S');
     const errors = [...a.diagnostics, ...lint(a.file, a.binding)].filter((d) => d.severity === 1);
-    // `ידניTHEN (` reads as a call, so the one error is inside it; nothing follows it.
+    // A Hebrew state against THEN, then `(`, reads as a call, so the one error is inside it; nothing follows it.
     expect(errors).toHaveLength(1);
     expect([3, 4, 5]).toContain(errors[0].range.start.line);
   });

@@ -36,7 +36,7 @@ import { compilerDiagnostics, LISTING_FILE, ListingStore } from './listings';
 import { isWhole, ListingView, sourceView, wholeView } from './listingView';
 import { Listing, parseListing, placeMessages } from '../language/listing';
 import { Severity } from '../language/types';
-import { FormatOptions, formatCl, learnColumns } from '../language/format';
+import { FormatOptions, formatCl, learnColumns, readFormatRules } from '../language/format';
 
 /** Settings under `amcl.*`, plus the encoding VS Code uses for CL files. */
 interface Settings {
@@ -533,12 +533,16 @@ function formatRules(uri: string): FormatOptions {
   for (let dir = path.dirname(p); ; dir = path.dirname(dir)) {
     const file = path.join(dir, '.clformat.json');
     if (fs.existsSync(file)) {
+      let raw: unknown;
       try {
-        return { ...defaults, ...(JSON.parse(fs.readFileSync(file, 'utf8')) as FormatOptions) };
+        raw = JSON.parse(fs.readFileSync(file, 'utf8'));
       } catch (err) {
-        void connection.window.showWarningMessage(`amcl: ${file} is not valid JSON: ${(err as Error).message}`);
+        void connection.window.showWarningMessage(`amcl: ${file} is not valid JSON, so it was not used: ${(err as Error).message}`);
         return defaults;
       }
+      const { options, problems } = readFormatRules(raw);
+      if (problems.length) void connection.window.showWarningMessage(`amcl: ${file}: ${problems.join('; ')}. Those rules were not used.`);
+      return { ...defaults, ...options };
     }
     if (path.dirname(dir) === dir) return defaults;
   }

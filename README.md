@@ -217,11 +217,15 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
-### Unreleased
+### 0.6.1
 
-- Formatting in each file's own style, with rules from `.clformat.json`.
-- Stray words, points used without an EXTERNAL, and undeclared names where a value is needed
-  are reported. An IF without THEN is reported once instead of once per word after it.
+- Formatting, on request only, in each file's own style: each kind of line goes to the column
+  the file uses most for it, with rules for a folder in `.clformat.json` and the command
+  **CL: Create Formatting Rules from This File**.
+- Stray words are reported: `asdf` alone, or `asdf qwer`, which reads as a state change of an
+  undeclared point.
+- Points used without an EXTERNAL, and undeclared names where a value is needed, are reported.
+- An IF without THEN is reported once instead of once per word after it.
 - Listings opened on their own start the extension.
 
 ### 0.5.0

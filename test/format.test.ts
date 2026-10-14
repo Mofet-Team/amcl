@@ -87,3 +87,19 @@ describe('format', () => {
     expect(formatCl('  SET A=1\n  SEND: "open   ')).toEqual([]);
   });
 });
+
+describe('format rules', () => {
+  it('keeps valid rules and lists the others', async () => {
+    const { readFormatRules } = await import('../src/language/format');
+    const { options, problems } = readFormatRules({ columns: { statement: 4, step: -1, phrase: 2 }, trimTrailingSpaces: 'yes', maxLineLength: 10, extra: 1 });
+    expect(options).toEqual({ columns: { statement: 4 } });
+    expect(problems).toEqual([
+      '"columns.step" must be a whole number from 0 to 200',
+      '"columns.phrase" is not a kind of line',
+      '"trimTrailingSpaces" must be true or false',
+      '"maxLineLength" must be a whole number of 40 or more',
+      '"extra" is not a formatting rule',
+    ]);
+    expect(readFormatRules([1, 2]).problems).toEqual(['the file is not a JSON object']);
+  });
+});
