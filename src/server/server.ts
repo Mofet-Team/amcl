@@ -19,7 +19,7 @@ import * as path from 'path';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { analyze, Analysis } from '../language/analyze';
 import { orientDescriptors, parseEb, PointRecord } from '../language/eb';
-import { lint, LintDiagnostic, LintEnvironment, unusedSymbols } from '../language/lint';
+import { COMPILER_COLUMNS, lint, LintDiagnostic, LintEnvironment, longLines, unusedSymbols } from '../language/lint';
 import { NetworkConfig, parseNcf } from '../language/ncf';
 import { FileSummary, summarize } from '../language/summary';
 import { WorkspaceIndex } from '../language/workspace';
@@ -47,6 +47,8 @@ interface Settings {
   disabledDiagnostics?: string[];
   /** Network configuration files (NCF.XX), or folders holding them, to name LCNs. */
   networkConfig?: string[];
+  /** Characters per line past which code is reported; the compiler reads 132. */
+  lineLength?: number;
 }
 
 const CL_FILE = /\.cl$/i;
@@ -308,7 +310,11 @@ function publishDiagnostics(doc: TextDocument): void {
     return;
   }
   const { analysis } = analysisOf(doc);
-  const found: LintDiagnostic[] = [...analysis.diagnostics, ...lint(analysis.file, analysis.binding, lintEnvironment)];
+  const found: LintDiagnostic[] = [
+    ...analysis.diagnostics,
+    ...lint(analysis.file, analysis.binding, lintEnvironment),
+    ...longLines(doc.getText().split(/\r?\n|\r/), settings.lineLength || COMPILER_COLUMNS),
+  ];
   const p = uriToPath(doc.uri);
   const compiler = p
     ? compilerDiagnostics(listings.companions(p), doc.getText().split(/\r?\n|\r/), found, disabled, pathToUri)

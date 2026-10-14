@@ -12,6 +12,7 @@ function settings() {
     hebrewDescriptors: workspace.getConfiguration('amcl').get<string>('hebrewDescriptors') ?? 'auto',
     disabledDiagnostics: workspace.getConfiguration('amcl').get<string[]>('diagnostics.disabled') ?? [],
     networkConfig: workspace.getConfiguration('amcl').get<string[]>('networkConfig') ?? [],
+    lineLength: workspace.getConfiguration('amcl').get<number>('lineLength') ?? 132,
   };
 }
 

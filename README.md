@@ -85,6 +85,9 @@ parameter lists and enumerations.
     INITIATE of a point that is not a process module, an EXTERNAL point on another UCN, more
     than 12 I/O module prefetches in a step, and a prefetched parameter in a PHASE ALARM clause
     or a CALL.
+  - Code past column 132 (`line-length`): the compiler reads 132 columns and drops the rest of a
+    line without a message. A ruler marks the column. `amcl.lineLength` sets a lower limit, for
+    an editor or file transfer that cuts lines sooner; comments past it are not reported.
   - Warnings the compiler does not give: messages longer than the 60 characters the CRT shows,
     subroutines nested deeper than one level, `WAIT` on an absolute time, and access to a point
     the point database places in another node (only READ, WRITE and INITIATE reach it).

@@ -48,6 +48,7 @@
         "editor.insertSpaces": true,
         "editor.tabSize": 4,
         "editor.detectIndentation": false,
+        "editor.rulers": [132],
         "editor.quickSuggestions": {
           "other": true,
           "comments": false,
@@ -95,6 +96,13 @@
           ],
           "markdownDescription": "How Hebrew point descriptors from the point database are shown in hovers."
         },
+        "amcl.lineLength": {
+          "type": "number",
+          "default": 132,
+          "minimum": 40,
+          "scope": "window",
+          "markdownDescription": "Characters per line past which code is reported (`line-length`). The compiler reads 132 columns and drops the rest of a line without a message; set a lower value if an editor or file transfer on the TPS cuts lines sooner. Comments past the limit are not reported."
+        },
         "amcl.diagnostics.disabled": {
           "type": "array",
           "items": {
@@ -138,6 +146,7 @@
               "read-only",
               "external-ucn",
               "prefetch",
+              "line-length",
               "compiler-error",
               "compiler-warning",
               "compiler-note",

@@ -843,6 +843,39 @@ class Linter {
   }
 }
 
+/** Columns the compiler reads: a 131-character statement compiles, one from column 137 is dropped. */
+export const COMPILER_COLUMNS = 132;
+
+/**
+ * Code past the last column the compiler reads, which it drops without a message. Comment text
+ * there is harmless. `limit` may be set lower, for an editor or transfer that cuts lines sooner.
+ */
+export function longLines(lines: string[], limit = COMPILER_COLUMNS): LintDiagnostic[] {
+  const out: LintDiagnostic[] = [];
+  lines.forEach((line, i) => {
+    const end = line.trimEnd().length;
+    if (end <= limit) return;
+    const comment = commentStart(line);
+    if (comment !== undefined && comment < limit) return;
+    const message =
+      limit === COMPILER_COLUMNS
+        ? `The compiler reads ${limit} columns and drops the rest of this line without a message: move it to a continuation line`
+        : `This line is longer than ${limit} characters (amcl.lineLength)`;
+    out.push({ range: { start: { line: i, character: limit }, end: { line: i, character: end } }, code: 'line-length', message, severity: Severity.Warning });
+  });
+  return out;
+}
+
+/** Where a `--` comment starts, outside string literals. */
+function commentStart(line: string): number | undefined {
+  let inString = false;
+  for (let i = 0; i < line.length - 1; i++) {
+    if (line[i] === '"') inString = !inString;
+    else if (!inString && line[i] === '-' && line[i + 1] === '-') return i;
+  }
+  return undefined;
+}
+
 /** Symbols nothing refers to, as the compiler's "Defined But Not Referenced". */
 export function unusedSymbols(binding: Binding): Set<ClSymbol> {
   const used = new Set<ClSymbol>();

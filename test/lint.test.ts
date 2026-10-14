@@ -345,3 +345,22 @@ describe('lint: CALL arguments', () => {
     expect(found('SUBROUTINE T (X, X: NUMBER)\nEXIT\nEND T')).toEqual(['duplicate: X is already defined as a subroutine argument on line 1']);
   });
 });
+describe('lint: line length', () => {
+  it('reports code past column 132, which the compiler drops', async () => {
+    const { longLines } = await import('../src/language/lint');
+    const code = `${' '.repeat(136)}IF A THEN GOTO L`;
+    const comment = `    SET A = 1 -- ${'x'.repeat(130)}`;
+    const string = `    SEND: "${'-'.repeat(125)}--"`;
+    const d = longLines(['    SET A = 1', code, comment, string, ' '.repeat(200)]);
+    expect(d.map((x) => [x.range.start.line, x.range.start.character, x.range.end.character, x.code])).toEqual([
+      [1, 132, 152, 'line-length'],
+      [3, 132, 139, 'line-length'],
+    ]);
+    expect(d[0].message).toMatch(/^The compiler reads 132 columns and drops the rest of this line/);
+  });
+
+  it('takes a lower limit', async () => {
+    const { longLines } = await import('../src/language/lint');
+    expect(longLines([`    SET A = ${'1 + '.repeat(25)}1`], 95).map((x) => x.message)).toEqual(['This line is longer than 95 characters (amcl.lineLength)']);
+  });
+});
