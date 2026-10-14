@@ -78,6 +78,13 @@ parameter lists and enumerations.
     None of these fires on the corpus of sources that compiled as they are.
   - Warnings, as the compiler gives them: names defined but not referenced (shown faded),
     strings over 64 characters, a LOOP never repeated.
+  - Warnings from the point database, for errors the compiler would give; they are only as
+    current as the database, so a point rebuilt as another type since the last compile shows
+    here first: a parameter its point type does not have (from the HPM Parameters Pocket Guide
+    and the PM Family Parameter Reference Dictionary), a store to a view-only parameter,
+    INITIATE of a point that is not a process module, an EXTERNAL point on another UCN, more
+    than 12 I/O module prefetches in a step, and a prefetched parameter in a PHASE ALARM clause
+    or a CALL.
   - Warnings the compiler does not give: messages longer than the 60 characters the CRT shows,
     subroutines nested deeper than one level, `WAIT` on an absolute time, and access to a point
     the point database places in another node (only READ, WRITE and INITIATE reach it).
@@ -178,7 +185,8 @@ Bug reports are welcome!
 
 - About 25 compiler errors caught while editing: LOCAL locations and types, loop counters and
   REPEATs, handler types and RESTART sections, PHASE headings, routine structure, and CALL
-  arguments.
+  arguments; with the point database, parameters a point type does not have, view-only
+  stores, INITIATE targets, EXTERNALs on another UCN, and I/O prefetch limits.
 - Compiler listings: `.LS` and `.LE` messages on the source, workspace-wide `.LE` errors in the
   Problems panel, and diagnostics, outline, hover and go to source inside listings.
 - ESLint, and a CI workflow that checks every push and builds the package for a tagged release.

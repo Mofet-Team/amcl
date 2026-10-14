@@ -5,6 +5,8 @@
 import { Declaration, Expr, HandlerRef, Ident, Routine, SourceFile, Statement, TypeSpec, Unit } from './ast';
 import { Binding, ClSymbol } from './binder';
 import { PointRecord } from './eb';
+import { POINT_TYPES } from './parameters';
+import { isViewOnly, typeHasParameter } from './pointParameters';
 import { Diagnostic, Range, Severity } from './types';
 import { BUILTINS } from './builtins';
 import { formatBox } from './workspace';
@@ -101,6 +103,7 @@ class Linter {
     this.declarations(unit, dialect, bound);
     this.duplicateDeclarations(unit.declarations);
     if (dialect && dialect !== 'AM') this.localStorage(unit, dialect, bound);
+    if (dialect && dialect !== 'AM') this.externalNetwork(unit, bound);
 
     const routines: Routine[] = [];
     switch (unit.kind) {
@@ -111,6 +114,11 @@ class Linter {
           if (dialect !== 'AM') this.nameLength(p.name, 'phase');
           this.duplicate(phases, p.name, 'phase');
           if (p.alarm) this.expressions(p.alarm, unit, dialect, bound);
+          if (p.alarm && dialect !== 'AM') {
+            for (const m of this.prefetches(p.alarm, bound)) {
+              this.report(m.range, 'prefetch', `${exprText(m)} needs a prefetch, which a PHASE ALARM clause cannot have (HP27-610 §4.1.4.2)`, Severity.Warning);
+            }
+          }
           this.handlerRefs(p.handlers);
           if (!p.routine.statements.length && !p.routine.steps.length) this.empty(p.name.range, 'PHASE');
         }
@@ -156,6 +164,10 @@ class Linter {
   }
 
   private routine(r: Routine, unit: Unit, dialect: Dialect | undefined, bound: string | undefined, steps: Map<string, Ident>): void {
+    if (dialect && dialect !== 'AM') {
+      this.prefetchLimit(r.statements, bound);
+      for (const st of r.steps) this.prefetchLimit(st.statements, bound);
+    }
     if (r.steps.length && r.statements.length && dialect !== 'AM') {
       this.report(r.statements[0].range, 'structure', 'A routine with steps begins with a STEP heading (HP27-610 §4.1.2)', Severity.Error);
     }
@@ -199,6 +211,9 @@ class Linter {
       case 'set':
         s.targets.forEach(e);
         e(s.value);
+        if (dialect && dialect !== 'AM') {
+          for (const t of s.targets) this.readOnly(t);
+        }
         if (s.onError) nested(s.onError.statement);
         break;
       case 'read':
@@ -247,6 +262,12 @@ class Linter {
         if (!s.target && s.handlerType && s.onError) {
           this.report(s.onError.range, 'initiate', 'WHEN ERROR is not allowed on INITIATE of this program\'s own handler (HP27-610 §3.2.15.4)', Severity.Error);
         }
+        if (s.target && dialect && dialect !== 'AM') {
+          const p = this.env?.point(s.target.name);
+          if (p && p.type !== 'PRMODNIM') {
+            this.report(s.target.range, 'initiate', `The point database has ${s.target.text} as ${typeName(p.type)}: only a process module runs a sequence to INITIATE`, Severity.Warning);
+          }
+        }
         if (s.target && bound && s.target.name === bound && !s.handlerType && dialect !== 'AM') {
           this.report(s.target.range, 'initiate', `${s.target.text} is this program's own point: a sequence cannot INITIATE itself`, Severity.Error);
         }
@@ -255,6 +276,14 @@ class Linter {
       case 'call':
         s.args.forEach(e);
         if (dialect !== 'AM') this.callArguments(s, unit);
+        if (dialect && dialect !== 'AM' && s.target && !BUILTIN_ARITY.has(s.target.name)) {
+          for (const a of s.args) {
+            for (const m of this.prefetches(a, bound)) {
+              if (/^(SO|INITREQ)$/.test(m.kind === 'member' ? m.property.name : '')) continue;
+              this.report(m.range, 'prefetch', `${exprText(m)} needs a prefetch, which a CALL argument cannot have (HP27-610 §3.2.13.2)`, Severity.Warning);
+            }
+          }
+        }
         break;
       case 'wait':
         e(s.value);
@@ -435,6 +464,100 @@ class Linter {
     }
   }
 
+  // ---------------------------------------------------------------- point database
+
+  /** A database point's parameter exists on its point type [HP09-641, XPM09]. */
+  private parameterExists(point: Ident, param: Ident): void {
+    const p = this.env?.point(point.name);
+    if (!p || typeHasParameter(p.type, param.name) !== false) return;
+    this.report(param.range, 'parameter', `The point database has ${point.text} as ${typeName(p.type)}, which has no parameter ${param.text}`, Severity.Warning);
+  }
+
+  /** A store to a parameter whose access lock is View. */
+  private readOnly(target: Expr): void {
+    const m = target.kind === 'apply' ? target.callee : target;
+    if (m.kind !== 'member' || m.object.kind !== 'name') return;
+    const p = this.env?.point(m.object.id.name);
+    // A regulatory point's access locks depend on its algorithm, which these tables do not separate.
+    if (p && !/^REG/.test(p.type) && isViewOnly(p.type, m.property.name)) {
+      this.report(m.property.range, 'read-only', `${m.property.text} of ${typeName(p.type)} is view-only: a program cannot store to it`, Severity.Warning);
+    }
+  }
+
+  /** EXTERNAL names points on the program's own UCN [HP27-610 §2.6.4.2]. */
+  private externalNetwork(unit: Unit, bound: string | undefined): void {
+    const own = bound && this.env?.boxOfProgram(bound);
+    if (!own) return;
+    const network = (box: string) => box.split(':')[0];
+    for (const d of unit.declarations) {
+      if (d.kind !== 'external') continue;
+      for (const n of d.names) {
+        // $NMnnNmm and !BOX name boxes relative to the program's own LCN; the database cannot place them.
+        if (/^[$!]/.test(n.name)) continue;
+        const p = this.env!.point(n.name);
+        const box = p && this.env!.boxOfPoint(p);
+        if (box && network(box) !== network(own)) {
+          this.report(n.range, 'external-ucn', `The point database places ${n.text} in ${formatBox(box)}, off this program's UCN (${formatBox(own)}): EXTERNAL can name only points on the same UCN (HP27-610 §2.6.4.2)`, Severity.Warning);
+        }
+      }
+    }
+  }
+
+  /**
+   * I/O module parameters of this HPM that a read needs prefetched [HP27-610 §2.5.5]: all of AI,
+   * AO, DI and DO points except the PV of a DI and the PV-related parameters of an AI.
+   */
+  private prefetches(root: Expr, bound: string | undefined): Extract<Expr, { kind: 'member' }>[] {
+    const own = bound && this.env?.boxOfProgram(bound);
+    const out: Extract<Expr, { kind: 'member' }>[] = [];
+    if (!own) return out;
+    walkExpr(root, (x) => {
+      if (x.kind !== 'member' || x.object.kind !== 'name') return;
+      const p = this.env!.point(x.object.id.name);
+      if (!p || !IO_TYPES.has(p.type) || this.env!.boxOfPoint(p) !== own) return;
+      const param = x.property.name;
+      if (p.type === 'DIINNIM' && (param === 'PV' || param === 'PVFL')) return;
+      if (p.type === 'ANINNIM' && AI_NO_PREFETCH.has(param)) return;
+      out.push(x);
+    });
+    return out;
+  }
+
+  /** At most 12 distinct prefetches in one step [HP27-610 §2.5.5]. */
+  private prefetchLimit(list: Statement[], bound: string | undefined): void {
+    const seen = new Map<string, Expr>();
+    eachStatement(list, (s) => {
+      const reads: Expr[] = [];
+      switch (s.kind) {
+        case 'set':
+          reads.push(s.value);
+          for (const t of s.targets) if (t.kind === 'apply') reads.push(...t.args);
+          break;
+        case 'if':
+          reads.push(...s.branches.map((b) => b.condition));
+          break;
+        case 'wait':
+          if (s.value) reads.push(s.value);
+          break;
+        case 'send':
+          reads.push(...s.items);
+          break;
+        case 'call':
+          reads.push(...s.args);
+          break;
+        case 'loop':
+          if (s.low) reads.push(s.low);
+          if (s.high) reads.push(s.high);
+          break;
+      }
+      for (const r of reads) for (const m of this.prefetches(r, bound)) if (!seen.has(exprText(m))) seen.set(exprText(m), m);
+    });
+    if (seen.size > PREFETCH_LIMIT) {
+      const extra = [...seen.values()][PREFETCH_LIMIT];
+      this.report(extra.range, 'prefetch', `This step reads ${seen.size} I/O module parameters; a step can prefetch ${PREFETCH_LIMIT} (HP27-610 §2.5.5): add a STEP heading`, Severity.Warning);
+    }
+  }
+
   /** Handlers named in an ENB statement or PHASE heading are of the type named with them. */
   private handlerRefs(refs: HandlerRef[]): void {
     for (const h of refs) {
@@ -491,6 +614,7 @@ class Linter {
         if (b && b.kind !== 'subroutine') this.arity(x.callee.id, x.args.length, b);
       }
       if (x.kind === 'member' && x.object.kind === 'name') {
+        if (dialect && dialect !== 'AM') this.parameterExists(x.object.id, x.property);
         this.boundPrefix(x.object.id, bound, dialect);
         if (!remoteAllowed) this.remoteAccess(x.object.id, unit, dialect, bound, stmt);
       }
@@ -738,6 +862,23 @@ export function unusedSymbols(binding: Binding): Set<ClSymbol> {
 const LOGICAL_OPS = new Set(['AND', 'OR', 'XOR']);
 
 const MAX_CALL_ARGS = 32;
+const PREFETCH_LIMIT = 12;
+/** Point types that live in I/O modules, whose parameters are prefetched. */
+const IO_TYPES = new Set(['ANINNIM', 'ANOUTNIM', 'DIINNIM', 'DOUTNIM']);
+/** AI parameters read without a prefetch [HP27-610 §2.5.5]. */
+const AI_NO_PREFETCH = new Set(['PV', 'PVSTS', 'PVROCNFL', 'PVROCPFL', 'PVHIFL', 'PVLOFL', 'PVHHFL', 'PVLLFL', 'BADPVFL']);
+
+const typeName = (type: string) => {
+  const name = POINT_TYPES[type] ?? type;
+  return `${/^[AEIOU]/.test(name) ? 'an' : 'a'} ${name}`;
+};
+
+/** `XV1.OP` as written. */
+function exprText(x: Expr): string {
+  if (x.kind === 'member') return `${exprText(x.object)}.${x.property.text}`;
+  if (x.kind === 'name') return x.id.text;
+  return '';
+}
 
 /** Argument counts of the built-ins, from their signatures: `Avg(x, y, ...)` takes 1 to 16. */
 const BUILTIN_ARITY = new Map(

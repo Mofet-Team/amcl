@@ -116,17 +116,61 @@ describe('lint', () => {
       ['NEAR', point('NEAR', 'DICMPNIM', 9)],
       ['FAR', point('FAR', 'DICMPNIM', 7)],
       ['SER', point('SER', 'ARRAY', 9, { EXTDATA: 'IO_FL' })],
+      ['FARPM', point('FARPM', 'PRMODNIM', 7)],
+      ['AI1', point('AI1', 'ANINNIM', 9)],
+      ['DO1', point('DO1', 'DOUTNIM', 9)],
+      ['OTHERUCN', { ...point('OTHERUCN', 'DICMPNIM', 4), fields: { NTWKNUM: '05', NODENUM: '4' } }],
+      ...Array.from({ length: 13 }, (_, i) => [`AO${i}`, point(`AO${i}`, 'ANOUTNIM', 9)] as [string, PointRecord]),
     ]);
     const env: LintEnvironment = {
       point: (n) => db.get(n.toUpperCase()),
       boxOfProgram: () => 'A/1:9',
-      boxOfPoint: (p) => `A/1:${p.fields.NODENUM}`,
+      boxOfPoint: (p) => `A/${Number(p.fields.NTWKNUM)}:${p.fields.NODENUM}`,
     };
 
     it('warns about access to a point the database places in another node', () => {
-      const src = hpm('SET NEAR.MODATTR = PROGRAM\nSET FAR.MODATTR = PROGRAM\nCLOSE FAR\nREAD NN(1) FROM FAR.PV\nINITIATE FAR', 'EXTERNAL NEAR, FAR');
+      const src = hpm('SET NEAR.MODATTR = PROGRAM\nSET FAR.MODATTR = PROGRAM\nCLOSE FAR\nREAD NN(1) FROM FAR.PV\nINITIATE FARPM', 'EXTERNAL NEAR, FAR, FARPM');
       expect(codes(src, env)).toEqual(['remote-access', 'remote-access']);
       expect(check(src, env)[0]).toMatch(/places FAR in HPM 01\/07 \(LCN A\), not this program's HPM 01\/09 \(LCN A\)/);
+    });
+
+    const dbFound = (src: string) => check(src, env).filter((m) => /^(parameter|read-only|initiate|external-ucn|prefetch)/.test(m));
+
+    it('warns about parameters the point type does not have, and stores to view-only ones', () => {
+      expect(dbFound(hpm('SET NEAR.OP = NEAR.PV\nSET NEAR.MODATTR = PROGRAM', 'EXTERNAL NEAR'))).toEqual([]);
+      expect(dbFound(hpm('SET NEAR.SPEED = 1', 'EXTERNAL NEAR'))).toEqual([
+        'parameter: The point database has NEAR as a Digital Composite, which has no parameter SPEED',
+      ]);
+      expect(dbFound(hpm('SET AI1.PVHIFL = ON', 'EXTERNAL AI1'))).toEqual(['read-only: PVHIFL of an Analog Input is view-only: a program cannot store to it']);
+    });
+
+    it('warns about INITIATE of a point that is not a process module', () => {
+      expect(dbFound(hpm('INITIATE NEAR', 'EXTERNAL NEAR'))).toEqual([
+        'initiate: The point database has NEAR as a Digital Composite: only a process module runs a sequence to INITIATE',
+      ]);
+    });
+
+    it('warns about EXTERNAL points on another UCN, but not about box names', () => {
+      expect(dbFound(hpm('SET OTHERUCN.OP = OFF', 'EXTERNAL OTHERUCN, $NM05N04'))[0]).toMatch(
+        /^external-ucn: The point database places OTHERUCN in HPM 05\/04 \(LCN A\), off this program's UCN/,
+      );
+    });
+
+    it('counts prefetches per step, and finds them in ALARM clauses and CALLs', () => {
+      const ao = Array.from({ length: 13 }, (_, i) => `AO${i}`);
+      const reads = ao.map((n) => `SET NN(2) = ${n}.OP`).join('\n');
+      expect(dbFound(hpm(reads, `EXTERNAL ${ao.join(', ')}`))).toEqual([
+        'prefetch: This step reads 13 I/O module parameters; a step can prefetch 12 (HP27-610 §2.5.5): add a STEP heading',
+      ]);
+      // AI PVs and stores are not prefetched.
+      expect(dbFound(hpm(`SET NN(2) = AI1.PV\n${ao.map((n) => `SET ${n}.OP = 0`).join('\n')}`, `EXTERNAL AI1, ${ao.join(', ')}`))).toEqual([]);
+      const seq = (phase: string, body: string) => `SEQUENCE S (HPM; POINT S)\nEXTERNAL AO0, DO1\nPHASE P ${phase}\n${body}\nEND S\nSUBROUTINE SUB (X)\nEXIT\nEND SUB`;
+      expect(dbFound(seq('(ALARM AO0.OP SECS)', 'EXIT'))).toEqual([
+        'prefetch: AO0.OP needs a prefetch, which a PHASE ALARM clause cannot have (HP27-610 §4.1.4.2)',
+      ]);
+      expect(dbFound(seq('', 'CALL SUB (AO0.OP)\nCALL SUB (DO1.SO)'))).toEqual([
+        'prefetch: AO0.OP needs a prefetch, which a CALL argument cannot have (HP27-610 §3.2.13.2)',
+      ]);
     });
 
     it('notes LOCALs on serial-interface Array points', () => {
