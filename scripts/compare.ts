@@ -9,6 +9,7 @@ import * as path from 'path';
 import { analyze } from '../src/language/analyze';
 import { orientDescriptors, parseEb, PointRecord } from '../src/language/eb';
 import { lint } from '../src/language/lint';
+import { parseListing, placeMessages } from '../src/language/listing';
 import { parseNcf } from '../src/language/ncf';
 import { summarize } from '../src/language/summary';
 import { WorkspaceIndex } from '../src/language/workspace';
@@ -24,28 +25,6 @@ const walk = (d: string, re: RegExp, o: string[] = []): string[] => {
   }
   return o;
 };
-
-/** Compiler messages in a listing: source line (0-based), column, text. */
-function listingMessages(listing: string): { source: string[]; messages: { line: number; char: number; text: string }[] } {
-  const source: string[] = [];
-  const messages: { line: number; char: number; text: string }[] = [];
-  let carets: number[] = [];
-  for (const l of listing.split(/\r?\n/)) {
-    const src = /^( {0,5}\d{1,6})( {0,5}\d{1,6}| {6}) {2}(.*)$/.exec(l);
-    if (src && Number(src[1]) === source.length + 1) {
-      source.push(src[3]);
-      carets = [];
-      continue;
-    }
-    if (/^\s+\^[\s^]*$/.test(l)) {
-      carets = [...l].flatMap((c, i) => (c === '^' ? [i - 14] : []));
-      continue;
-    }
-    const msg = /^\s*\*\*(WARNING|NOTE|ERROR)\s*\*\*\s+(.*?)\s*$/.exec(l);
-    if (msg) messages.push({ line: source.length - 1, char: carets.shift() ?? -1, text: msg[2] });
-  }
-  return { source, messages };
-}
 
 const trimmed = (lines: string[]) => {
   const out = lines.map((l) => l.trimEnd());
@@ -90,11 +69,12 @@ const verified = new Set<string>();
 for (const [f, text] of texts) {
   const ls = f.replace(/\.cl$/i, (e) => (e === '.CL' ? '.LS' : '.ls'));
   if (!fs.existsSync(ls)) continue;
-  const { source, messages } = listingMessages(dec.decode(fs.readFileSync(ls)));
+  const listing = parseListing(dec.decode(fs.readFileSync(ls)));
   const lines = text.split(/\r?\n|\r/);
-  const a = trimmed(source);
+  const a = trimmed(listing.source.map((s) => s.text));
   const b = trimmed(lines);
   if (a.length !== b.length || a.some((l, i) => l !== b[i])) continue;
+  const messages = placeMessages(listing, lines).placed.map((p) => ({ line: p.line, char: p.message.caret === undefined ? -1 : p.start, text: p.message.text }));
   checked++;
   verified.add(f);
 

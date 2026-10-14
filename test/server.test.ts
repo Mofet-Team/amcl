@@ -151,3 +151,64 @@ describe.skipIf(!fs.existsSync(serverPath))('language server: workspace index', 
     expect(syms.map((s: any) => s.name)).toEqual(['TANK_LVL']);
   });
 });
+
+describe.skipIf(!fs.existsSync(serverPath))('language server: compiler listings', () => {
+  const ws = path.join(__dirname, 'fixtures', 'listing');
+  const uriOf = (name: string) => pathToFileURL(path.join(ws, name)).toString();
+  let proc: ChildProcess;
+  let client: Client;
+
+  beforeAll(async () => {
+    proc = spawn(process.execPath, [serverPath, '--stdio']);
+    client = new Client(proc);
+    await client.request('initialize', {
+      processId: null,
+      rootUri: null,
+      capabilities: {},
+      workspaceFolders: [{ uri: pathToFileURL(ws).toString(), name: 'listing' }],
+      initializationOptions: { encoding: 'utf8', pointDatabase: [] },
+    });
+    client.notify('initialized', {});
+  });
+
+  afterAll(() => proc?.kill());
+
+  const diagnosticsFor = async (uri: string) => {
+    for (let i = 0; i < 100; i++) {
+      const n = client.notifications.filter((x) => x.method === 'textDocument/publishDiagnostics' && x.params.uri === uri).pop();
+      if (n) return n.params.diagnostics;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error(`no diagnostics for ${uri}`);
+  };
+
+  it('reports the errors of a failed compile on its source without opening it', async () => {
+    const d = await diagnosticsFor(uriOf('VALVE.CL'));
+    expect(d.map((x: any) => [x.message, x.code, x.range.start.line, x.range.start.character])).toEqual([
+      ['Error in SET statement', 'compiler-error', 3, 16],
+      ['XV3 not found', 'compiler-error', 4, 9],
+    ]);
+    expect(d[1].relatedInformation[0].location.uri).toBe(uriOf('VALVE.LE'));
+  });
+
+  it('serves an open error listing: diagnostics, outline, hover, and the way to the source', async () => {
+    const uri = uriOf('VALVE.LE');
+    client.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'cl-listing', version: 1, text: fixture('listing/VALVE.LE') } });
+    const d = await diagnosticsFor(uri);
+    expect(d.map((x: any) => x.range.start.line)).toEqual([2, 6]);
+    const symbols = await client.request('textDocument/documentSymbol', { textDocument: { uri } });
+    expect(symbols.map((s: any) => s.name)).toEqual(['Errors (2)']);
+    const def = await client.request('textDocument/definition', { textDocument: { uri }, position: { line: 8, character: 4 } });
+    expect(def).toMatchObject({ uri: uriOf('VALVE.CL'), range: { start: { line: 4, character: 9 }, end: { line: 4, character: 12 } } });
+    const hover = await client.request('textDocument/hover', { textDocument: { uri }, position: { line: 8, character: 4 } });
+    expect(hover.contents.value).toMatch(/pass 2/);
+  });
+
+  it('adds listing messages to an open source, without repeating its own warnings', async () => {
+    const uri = uriOf('HEATER.CL');
+    client.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'cl', version: 1, text: fixture('listing/HEATER.CL') } });
+    const d = await diagnosticsFor(uri);
+    expect(d.filter((x: any) => x.source === 'CL compiler').map((x: any) => x.code)).toEqual(['compiler-note']);
+    expect(d.filter((x: any) => x.code === 'unused')).toHaveLength(1);
+  });
+});

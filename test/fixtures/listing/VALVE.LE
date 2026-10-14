@@ -1,0 +1,12 @@
+ CL V25.1   VALVE                                      14/10/26 09:20   Page    1
+
+     4            SET XV2.OP =                                                                      
+                              ^
+  **ERROR   **  Error in SET statement
+ 
+     5            OPEN XV3                                                                          
+                       ^
+  **ERROR   **  XV3 not found
+ 
+ 
+ ********  Number of errors detected:   2

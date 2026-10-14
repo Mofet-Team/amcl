@@ -120,12 +120,16 @@
               "const-expr",
               "step-size",
               "call-depth",
-              "wait-absolute"
+              "wait-absolute",
+              "compiler-error",
+              "compiler-warning",
+              "compiler-note",
+              "compiler-stale"
             ]
           },
           "default": [],
           "scope": "window",
-          "markdownDescription": "Diagnostic codes not to report, for example `unused` or `remote-access` (which is only as current as the point database). The code is shown with each problem."
+          "markdownDescription": "Diagnostic codes not to report, for example `unused` or `remote-access` (which is only as current as the point database). The code is shown with each problem. `compiler-error`, `compiler-warning` and `compiler-note` are messages from the `.LS`/`.LE` listings next to a source; `compiler-stale` reports listing messages on lines changed since that compile."
         }
       }
     },

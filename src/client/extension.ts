@@ -22,7 +22,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     debug: { module, transport: TransportKind.ipc, options: { execArgv: ['--nolazy', '--inspect=6009'] } },
   };
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [{ language: 'cl' }],
+    documentSelector: [{ language: 'cl' }, { language: 'cl-listing' }],
     initializationOptions: settings(),
   };
   client = new LanguageClient('amcl', 'CL Language Server', serverOptions, clientOptions);

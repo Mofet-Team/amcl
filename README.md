@@ -67,6 +67,19 @@ parameter lists and enumerations.
   extension reports every "Defined But Not Referenced" warning the compiler gave, at the same
   line and column, with no others, and no error on code the compiler accepted.
   `node dist/compare.js <cl-dir> [eb-dir]` repeats the comparison.
+- Compiler listings. The `.LS` listing of every compile and the `.LE` error listing of a failed
+  one, when they sit next to the source:
+  - Their errors, warnings and notes show on the source lines they are about, also after the
+    source was edited: a message follows its line by text, and messages on lines changed since
+    the compile are counted on line 1. Each links to its place in the listing.
+  - Errors from `.LE` files show in the Problems panel for every source, open or not, so
+    **F8** steps through all failed compiles. An `.LE` is ignored once a newer clean `.LS`
+    exists.
+  - In an open listing: squiggles at the compiler's carets, an outline of the messages by
+    severity, a hover that names the compiler pass and severity of each of the ~400 compiler
+    messages, and **Go to Definition** from a listing line to that line in the source.
+  - Codes `compiler-error`, `compiler-warning`, `compiler-note` and `compiler-stale`. Compiler
+    warnings the extension reports itself (unused names, for example) are shown once.
 - Snippets, comment toggling, bracket matching
 
 ## Requirements
@@ -142,6 +155,12 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
+### Unreleased
+
+- Compiler listings: `.LS` and `.LE` messages on the source, workspace-wide `.LE` errors in the
+  Problems panel, and diagnostics, outline, hover and go to source inside listings.
+- ESLint, and a CI workflow that checks every push and builds the package for a tagged release.
+
 ### 0.4.0
 
 - Language server: outline, go to definition, references, highlights, folding and diagnostics.

@@ -24,11 +24,15 @@ import { WorkspaceIndex } from '../language/workspace';
 import { crossDefinition, crossReferences, targetAt, workspaceSymbols } from './features/crossfile';
 import { complete } from './features/completion';
 import { foldingRanges } from './features/folding';
+import { listedLineAt, listingDiagnostics, listingHover, listingSymbols } from './features/listing';
 import { signatureHelp } from './features/signature';
 import { hover } from './features/hover';
 import { definition, documentHighlights, references } from './features/navigation';
 import { documentSymbols } from './features/outline';
 import { decoderFor, findFiles, pathToUri, readText, resolvePaths, uriToPath } from './loader';
+import { compilerDiagnostics, LISTING_FILE, ListingStore } from './listings';
+import { Listing, parseListing, placeMessages } from '../language/listing';
+import { Severity } from '../language/types';
 
 /** Settings under `amcl.*`, plus the encoding VS Code uses for CL files. */
 interface Settings {
@@ -54,6 +58,8 @@ const cache = new Map<string, { version: number; analysis: Analysis; summary: Fi
 let settings: Settings = {};
 let workspaceRoots: string[] = [];
 let decoder = decoderFor(undefined);
+const listings = new ListingStore((bytes) => decoder.decode(bytes));
+const listingCache = new Map<string, { version: number; listing: Listing }>();
 
 function analyzeText(uri: string, text: string): Analysis {
   try {
@@ -78,9 +84,30 @@ function analysisOf(doc: TextDocument): { analysis: Analysis; summary: FileSumma
 
 function withDoc<T>(uri: string, fallback: T, f: (doc: TextDocument, a: Analysis, s: FileSummary) => T): T {
   const doc = documents.get(uri);
-  if (!doc) return fallback;
+  if (!doc || isListing(doc)) return fallback;
   const { analysis, summary } = analysisOf(doc);
   return f(doc, analysis, summary);
+}
+
+const isListing = (doc: TextDocument) => doc.languageId === 'cl-listing';
+
+function listingOf(doc: TextDocument): Listing {
+  const hit = listingCache.get(doc.uri);
+  if (hit && hit.version === doc.version) return hit.listing;
+  const listing = parseListing(doc.getText());
+  listingCache.set(doc.uri, { version: doc.version, listing });
+  return listing;
+}
+
+/** The lines of a file: the open document's, else the saved file's. */
+function linesOf(p: string): string[] | undefined {
+  const doc = documents.get(pathToUri(p));
+  if (doc) return doc.getText().split(/\r?\n|\r/);
+  try {
+    return decoder.decode(fs.readFileSync(p)).split(/\r?\n|\r/);
+  } catch {
+    return undefined;
+  }
 }
 
 // ------------------------------------------------------------------ indexing
@@ -129,6 +156,11 @@ async function indexWorkspace(): Promise<void> {
       }
     }
     connection.console.info(`amcl: indexed ${index.fileCount} CL files`);
+    listings.clear();
+    for (const p of await findFiles(workspaceRoots, /\.le$/i)) {
+      const source = listings.sourceOf(p);
+      if (source) publishClosed(source);
+    }
   } finally {
     progress.done();
   }
@@ -161,7 +193,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
 
 connection.onInitialized(() => {
   void connection.client.register(DidChangeWatchedFilesNotification.type, {
-    watchers: [{ globPattern: '**/*.{CL,cl,Cl,cL,EB,eb,Eb,eB}' }],
+    watchers: [{ globPattern: '**/*.{CL,cl,Cl,cL,EB,eb,Eb,eB,LS,ls,Ls,lS,LE,le,Le,lE}' }],
   });
   // Database-dependent checks of documents opened during indexing need the finished index.
   void indexWorkspace().then(republishAll);
@@ -192,6 +224,13 @@ connection.onDidChangeWatchedFiles(({ changes }) => {
     } else if (CL_FILE.test(p)) {
       if (c.type === FileChangeType.Deleted) index.deleteFile(c.uri);
       else void indexFile(p);
+      publishClosed(p);
+    } else if (LISTING_FILE.test(p)) {
+      listings.invalidate(p);
+      const source = listings.sourceOf(p);
+      const doc = source && documents.get(pathToUri(source));
+      if (doc) publishDiagnostics(doc);
+      else if (source) publishClosed(source);
     }
   }
 });
@@ -207,9 +246,17 @@ const lintEnvironment: LintEnvironment = {
 };
 
 function publishDiagnostics(doc: TextDocument): void {
-  const { analysis } = analysisOf(doc);
   const disabled = new Set(settings.disabledDiagnostics ?? []);
+  if (isListing(doc)) {
+    void connection.sendDiagnostics({ uri: doc.uri, version: doc.version, diagnostics: listingDiagnostics(listingOf(doc), disabled) });
+    return;
+  }
+  const { analysis } = analysisOf(doc);
   const found: LintDiagnostic[] = [...analysis.diagnostics, ...lint(analysis.file, analysis.binding, lintEnvironment)];
+  const p = uriToPath(doc.uri);
+  const compiler = p
+    ? compilerDiagnostics(listings.companions(p), doc.getText().split(/\r?\n|\r/), found, disabled, pathToUri)
+    : [];
   const diagnostics: Diagnostic[] = found
     .filter((d) => !disabled.has(d.code))
     .map((d) => ({
@@ -220,12 +267,32 @@ function publishDiagnostics(doc: TextDocument): void {
       source: 'cl',
       tags: d.tags as DiagnosticTag[] | undefined,
     }));
-  void connection.sendDiagnostics({ uri: doc.uri, version: doc.version, diagnostics });
+  closedPublished.delete(doc.uri);
+  void connection.sendDiagnostics({ uri: doc.uri, version: doc.version, diagnostics: [...diagnostics, ...compiler] });
+}
+
+/** Closed sources with errors from their error listing, published so the Problems panel lists every failed compile. */
+const closedPublished = new Set<string>();
+
+function publishClosed(clPath: string): void {
+  const uri = pathToUri(clPath);
+  if (documents.get(uri)) return;
+  const disabled = new Set(settings.disabledDiagnostics ?? []);
+  const errorListings = listings.companions(clPath).filter((f) => f.kind === 'LE');
+  const lines = errorListings.length ? linesOf(clPath) : undefined;
+  const diagnostics = lines ? compilerDiagnostics(errorListings, lines, [], disabled, pathToUri) : [];
+  if (diagnostics.length) closedPublished.add(uri);
+  else if (!closedPublished.delete(uri)) return;
+  void connection.sendDiagnostics({ uri, diagnostics });
 }
 
 /** Re-check open documents when something they depend on changes (settings, the index). */
 function republishAll(): void {
   for (const doc of documents.all()) publishDiagnostics(doc);
+  for (const uri of [...closedPublished]) {
+    const p = uriToPath(uri);
+    if (p) publishClosed(p);
+  }
 }
 
 documents.onDidChangeContent(({ document }) => {
@@ -241,29 +308,54 @@ documents.onDidClose(({ document }) => {
   clearTimeout(pending.get(document.uri));
   pending.delete(document.uri);
   cache.delete(document.uri);
+  listingCache.delete(document.uri);
   void connection.sendDiagnostics({ uri: document.uri, diagnostics: [] });
+  if (isListing(document)) return;
   // Fall back to the saved file, which may differ from the discarded edits.
   const p = uriToPath(document.uri);
-  if (p) void indexFile(p);
-  else index.deleteFile(document.uri);
+  if (p) {
+    void indexFile(p);
+    publishClosed(p);
+  } else index.deleteFile(document.uri);
 });
 
 // ------------------------------------------------------------------ requests
 
-connection.onDocumentSymbol(({ textDocument }) =>
-  withDoc(textDocument.uri, [], (_, a) => documentSymbols(a.binding.symbols, a.file.units, unusedSymbols(a.binding))),
-);
+connection.onDocumentSymbol(({ textDocument }) => {
+  const doc = documents.get(textDocument.uri);
+  if (doc && isListing(doc)) return listingSymbols(listingOf(doc));
+  return withDoc(textDocument.uri, [], (_, a) => documentSymbols(a.binding.symbols, a.file.units, unusedSymbols(a.binding)));
+});
+
+/** From a line of a listing to that line in the current source. */
+function listingDefinition(doc: TextDocument, line: number): Location | undefined {
+  const listing = listingOf(doc);
+  const at = listedLineAt(listing, line);
+  const p = uriToPath(doc.uri);
+  const source = at && p && listings.sourceOf(p);
+  const lines = source && linesOf(source);
+  if (!at || !source || !lines) return undefined;
+  const probe = { kind: '', text: '', severity: Severity.Error, listingLine: line, context: at.listed, caret: at.caret };
+  const placed = placeMessages({ source: [], messages: [probe] }, lines).placed[0];
+  if (!placed) return undefined;
+  const range = at.caret === undefined
+    ? { start: { line: placed.line, character: placed.start }, end: { line: placed.line, character: placed.start } }
+    : { start: { line: placed.line, character: placed.start }, end: { line: placed.line, character: placed.end } };
+  return { uri: pathToUri(source), range };
+}
 
 connection.onWorkspaceSymbol(({ query }) => workspaceSymbols(index, query));
 
 connection.onFoldingRanges(({ textDocument }) => withDoc(textDocument.uri, [], (_, a) => foldingRanges(a.file)));
 
-connection.onDefinition(({ textDocument, position }) =>
-  withDoc<Location | Location[] | undefined>(textDocument.uri, undefined, (doc, a, s) => {
+connection.onDefinition(({ textDocument, position }) => {
+  const doc = documents.get(textDocument.uri);
+  if (doc && isListing(doc)) return listingDefinition(doc, position.line);
+  return withDoc<Location | Location[] | undefined>(textDocument.uri, undefined, (doc, a, s) => {
     const cross = crossDefinition(targetAt(a, s, index, position), index, a, position);
     return cross.length ? cross : definition(a.binding, doc.uri, position);
-  }),
-);
+  });
+});
 
 connection.onReferences(({ textDocument, position, context }) =>
   withDoc(textDocument.uri, [], (doc, a, s) => {
@@ -273,11 +365,13 @@ connection.onReferences(({ textDocument, position, context }) =>
   }),
 );
 
-connection.onHover(({ textDocument, position }) =>
-  withDoc(textDocument.uri, null, (doc, analysis, summary) =>
+connection.onHover(({ textDocument, position }) => {
+  const doc = documents.get(textDocument.uri);
+  if (doc && isListing(doc)) return listingHover(listingOf(doc), position) ?? null;
+  return withDoc(textDocument.uri, null, (doc, analysis, summary) =>
     hover({ uri: doc.uri, analysis, summary, index, lines: doc.getText().split(/\r?\n|\r/), display }, position) ?? null,
-  ),
-);
+  );
+});
 
 connection.onCompletion(({ textDocument, position }) =>
   withDoc(textDocument.uri, null, (doc, analysis) =>

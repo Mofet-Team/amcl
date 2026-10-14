@@ -4,7 +4,7 @@
   "scopeName": "text.cl-listing",
   "patterns": [
     {
-      "match": "^\\s*(\\*\\*ERROR\\s*\\*\\*)(.*)$",
+      "match": "^\\s*(\\*\\*\\s*(?:ERROR|SEVERE|FATAL)\\s*\\*\\*)(.*)$",
       "captures": {
         "1": { "name": "invalid.illegal.error.cl-listing" },
         "2": { "name": "markup.bold.error.cl-listing" }

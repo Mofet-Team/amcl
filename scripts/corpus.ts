@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { analyze } from '../src/language/analyze';
 import { BUILTIN_SUBROUTINES } from '../src/language/checks';
+import { parseListing } from '../src/language/listing';
 import { foldingRanges } from '../src/server/features/folding';
 import { documentSymbols } from '../src/server/features/outline';
 
@@ -24,16 +25,6 @@ const verifiedOnly = args.includes('--verified');
 const allSeverities = args.includes('--all-severities');
 const decoder = new TextDecoder('windows-1255');
 
-/** The source column of a compiler listing: the text after the Line and Loc columns. */
-function listingSource(listing: string): string[] {
-  const out: string[] = [];
-  for (const line of listing.split(/\r?\n/)) {
-    const m = line.match(/^( {0,5}\d{1,6})( {0,5}\d{1,6}| {6}) {2}(.*)$/);
-    if (m && Number(m[1]) === out.length + 1) out.push(m[3]);
-  }
-  return out;
-}
-
 function matchesListing(file: string, text: string): boolean {
   const ls = file.replace(/\.cl$/i, (e) => (e === '.CL' ? '.LS' : '.ls'));
   if (!fs.existsSync(ls)) return false;
@@ -42,7 +33,7 @@ function matchesListing(file: string, text: string): boolean {
     while (out.length && out[out.length - 1] === '') out.pop();
     return out;
   };
-  const listed = trimmed(listingSource(decoder.decode(fs.readFileSync(ls))));
+  const listed = trimmed(parseListing(decoder.decode(fs.readFileSync(ls))).source.map((s) => s.text));
   const source = trimmed(text.split(/\r?\n|\r/));
   return listed.length === source.length && listed.every((l, i) => l === source[i]);
 }
