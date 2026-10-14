@@ -72,6 +72,10 @@ parameter lists and enumerations.
       EXTERNAL; a state change of a LOCAL or of more than 16 points; and a word alone on a line.
       A state change is the one statement without a keyword, so stray words and typos read as
       one: `asdf qwer` is reported as an undeclared point QWER.
+    - Names: an undeclared name where a value is needed, in arithmetic, AND/OR, conditions,
+      indices, and in a store to a declared LOCAL (a LOGICAL takes ON or OFF, a state-list LOCAL
+      its own states). A name compared with or stored to a point parameter may be one of the
+      point's states, which the database does not always list, so it is not reported.
     - Structure: statements before the first STEP of a routine that has steps, a phase, step,
       handler or subroutine with no statements, and a sequence that INITIATEs itself.
     - CALL: the number of arguments (also for built-in functions and subroutines), at most 32,
@@ -216,7 +220,8 @@ Bug reports are welcome!
 ### Unreleased
 
 - Formatting in each file's own style, with rules from `.clformat.json`.
-- Stray words and points used without an EXTERNAL are reported.
+- Stray words, points used without an EXTERNAL, and undeclared names where a value is needed
+  are reported. An IF without THEN is reported once instead of once per word after it.
 - Listings opened on their own start the extension.
 
 ### 0.5.0

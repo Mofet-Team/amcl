@@ -208,6 +208,8 @@ class Linter {
       else if (dialect === 'PM') this.report(s.onError.range, 'dialect', 'WHEN ERROR needs CL/APM or CL/HPM (R620 and later)', Severity.Error);
     }
 
+    if (dialect && dialect !== 'AM') this.valueNames(s, bound);
+
     switch (s.kind) {
       case 'set':
         s.targets.forEach(e);
@@ -493,6 +495,141 @@ class Linter {
         }
       }
     }
+  }
+
+  // ---------------------------------------------------------------- names in expressions
+
+  /**
+   * Names where a value is needed must be declared: in arithmetic and logic, conditions,
+   * indices, and stores to declared LOCALs. A bare name compared with or stored to a point
+   * parameter may be one of its states, which the database does not always list, so it is
+   * left alone there; a LOCAL's own states and ON/OFF are known.
+   */
+  private valueNames(s: Statement, bound: string | undefined): void {
+    const strict = (x: Expr | undefined) => x && this.checkExpr(x, bound);
+    switch (s.kind) {
+      case 'set': {
+        s.targets.forEach((t) => this.checkTarget(t, bound));
+        const states = this.allowedStates(s.targets);
+        if (s.value.kind === 'name' && states !== 'any') this.checkName(s.value.id, bound, states);
+        else if (s.value.kind === 'when') {
+          for (const arm of s.value.arms) {
+            strict(arm.condition);
+            if (arm.value.kind === 'name') {
+              if (states !== 'any') this.checkName(arm.value.id, bound, states);
+            } else strict(arm.value);
+          }
+        } else if (s.value.kind !== 'name') strict(s.value);
+        break;
+      }
+      case 'if':
+        s.branches.forEach((b) => strict(b.condition));
+        break;
+      case 'wait':
+        strict(s.value);
+        if (s.timeout) strict(s.timeout.time);
+        break;
+      case 'loop':
+        strict(s.low);
+        strict(s.high);
+        break;
+      case 'call':
+        // An argument may be an enumeration state; inside an expression, names are values.
+        for (const a of s.args) if (a.kind !== 'name') strict(a);
+        break;
+    }
+  }
+
+  /** The states a bare name stored to these targets may be: 'any' when a target is a point parameter. */
+  private allowedStates(targets: Expr[]): Set<string> | 'any' {
+    const out = new Set<string>();
+    for (const t of targets) {
+      const id = t.kind === 'name' ? t.id : t.kind === 'apply' && t.callee.kind === 'name' ? t.callee.id : undefined;
+      const d = id && this.resolved.get(id)?.declaration;
+      if (!id || d?.kind !== 'local') return 'any';
+      const type = d.type;
+      if (type?.kind === 'states') type.states.forEach((st) => out.add(st.name));
+      else if (type?.kind === 'named' && (type.name.name === 'LOGICAL' || type.name.name === 'FLAG')) ['ON', 'OFF'].forEach((st) => out.add(st));
+      else if (type?.kind === 'named' && !['NUMBER', 'TIME', 'STRING'].includes(type.name.name)) return 'any';
+    }
+    return out;
+  }
+
+  private checkTarget(t: Expr, bound: string | undefined): void {
+    if (t.kind === 'apply') t.args.forEach((a) => this.checkExpr(a, bound));
+    if (t.kind === 'member') this.checkTarget(t.object, bound);
+  }
+
+  /** Every name in a value expression, except a bare name compared with a point parameter. */
+  private checkExpr(x: Expr, bound: string | undefined): void {
+    switch (x.kind) {
+      case 'name':
+        this.checkName(x.id, bound, new Set());
+        return;
+      case 'member':
+        if (x.object.kind !== 'name') this.checkExpr(x.object, bound);
+        return;
+      case 'apply':
+        if (x.callee.kind !== 'name') this.checkExpr(x.callee, bound);
+        x.args.forEach((a) => this.checkExpr(a, bound));
+        return;
+      case 'unary':
+        this.checkExpr(x.operand, bound);
+        return;
+      case 'paren':
+        this.checkExpr(x.inner, bound);
+        return;
+      case 'in':
+        [x.value, x.low, x.high].forEach((y) => this.checkExpr(y, bound));
+        return;
+      case 'time':
+        x.parts.forEach((p) => this.checkExpr(p.value, bound));
+        return;
+      case 'when':
+        x.arms.forEach((a) => {
+          if (a.condition) this.checkExpr(a.condition, bound);
+          this.checkExpr(a.value, bound);
+        });
+        return;
+      case 'binary':
+        if (COMPARISONS.has(x.op)) {
+          for (const [side, other] of [[x.left, x.right], [x.right, x.left]] as const) {
+            if (side.kind !== 'name') {
+              this.checkExpr(side, bound);
+              continue;
+            }
+            const states = this.statesBeside(other);
+            if (states !== 'any') this.checkName(side.id, bound, states);
+          }
+          return;
+        }
+        this.checkExpr(x.left, bound);
+        this.checkExpr(x.right, bound);
+        return;
+    }
+  }
+
+  /** What a bare name compared with `other` may be: its states, or 'any' beside a point parameter. */
+  private statesBeside(other: Expr): Set<string> | 'any' {
+    if (other.kind === 'member' || (other.kind === 'apply' && other.callee.kind === 'member')) return 'any';
+    if (other.kind === 'name' || (other.kind === 'apply' && other.callee.kind === 'name')) {
+      const id = other.kind === 'name' ? other.id : (other.callee as Extract<Expr, { kind: 'name' }>).id;
+      const sym = this.resolved.get(id);
+      if (!sym) return 'any';
+      if (sym.kind === 'local' || sym.kind === 'argument') return sym.declaration?.kind === 'local' ? this.allowedStates([other]) : 'any';
+      return 'any';
+    }
+    return new Set();
+  }
+
+  private checkName(id: Ident, bound: string | undefined, states: Set<string>): void {
+    const n = id.name;
+    if (this.resolved.get(id) || states.has(n) || /^[!$]/.test(n) || n === bound || BUILTIN_ARITY.has(n)) return;
+    if (typeHasParameter('PRMODNIM', n)) return;
+    if (this.undeclared.has(id)) return;
+    this.undeclared.add(id);
+    const hint = states.size ? `: not declared, and not ${[...states].join(' or ')}` : ': not a LOCAL, constant, EXTERNAL or argument';
+    this.report(id.range, 'undefined', `Undefined name ${id.text}${hint}`, Severity.Error);
   }
 
   /** A point named in `point.param` is declared EXTERNAL, unless it is the program's own [HP27-610 §2.6.4]. */
@@ -938,6 +1075,7 @@ const LOGICAL_OPS = new Set(['AND', 'OR', 'XOR']);
 const MAX_CALL_ARGS = 32;
 const PREFETCH_LIMIT = 12;
 const MAX_STATE_CHANGE_POINTS = 16;
+const COMPARISONS = new Set(['=', '<>', '<', '<=', '>', '>=']);
 const STATE_CHANGE_TYPES = new Set(['DOUTNIM', 'DICMPNIM', 'DEVCTLNIM']);
 /** Point types that live in I/O modules, whose parameters are prefetched. */
 const IO_TYPES = new Set(['ANINNIM', 'ANOUTNIM', 'DIINNIM', 'DOUTNIM']);

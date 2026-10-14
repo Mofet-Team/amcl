@@ -398,3 +398,35 @@ describe('lint: stray words and undeclared points', () => {
     expect(check('BLOCK B (POINT B; AT GENERAL)\nON\nEND B').filter((m) => /^(state-change|undeclared-point)/.test(m))).toEqual([]);
   });
 });
+
+describe('lint: undefined names on the right of =', () => {
+  const found = (stmt: string) =>
+    check(`SEQUENCE S (HPM; POINT S)\nEXTERNAL XV1\nLOCAL N AT NN(1)\nLOCAL F: LOGICAL AT FL(1)\nLOCAL S2: OPEN/CLOSE AT FL(2)\nPHASE P\n${stmt}\nEND S\nSUBROUTINE SUB (A)\nEXIT\nEND SUB`).filter((m) =>
+      m.startsWith('undefined'),
+    );
+
+  it('wants names declared where a value is needed', () => {
+    for (const stmt of ['SET N = qwer', 'SET N = qwer + 1', 'IF qwer THEN EXIT', 'IF N = qwer THEN EXIT', 'WAIT N > qwer', 'SET N = NN(qwer)', 'IF F AND qwer THEN EXIT', 'SET N = ABS(qwer)']) {
+      expect(found(stmt), stmt).toEqual(['undefined: Undefined name qwer: not a LOCAL, constant, EXTERNAL or argument']);
+    }
+  });
+
+  it('knows the states of LOCALs', () => {
+    expect(found('SET F = ON\nSET S2 = OPEN\nIF S2 = CLOSE THEN EXIT')).toEqual([]);
+    expect(found('SET F = qwer')).toEqual(['undefined: Undefined name qwer: not declared, and not ON or OFF']);
+    expect(found('SET S2 = qwer')).toEqual(['undefined: Undefined name qwer: not declared, and not OPEN or CLOSE']);
+  });
+
+  it('leaves a name beside a point parameter alone: it may be one of the point\'s states', () => {
+    expect(found('SET XV1.OP = qwer\nIF XV1.PV = qwer THEN EXIT\nCALL SUB(qwer)\nSET N = NOW')).toEqual([]);
+  });
+
+  it('reports an IF without THEN once, not every word after it', () => {
+    // A state written against THEN reads as one name, and the IF loses its THEN.
+    const a = analyze('SEQUENCE S (HPM; POINT S)\nEXTERNAL XV1\nPHASE P\nIF XV1.PV=\u05d9\u05d3\u05e0\u05d9THEN\n&  (SET XV1.MODATTR = PROGRAM;\n&  GOTO C)\nC: EXIT\nEND S');
+    const errors = [...a.diagnostics, ...lint(a.file, a.binding)].filter((d) => d.severity === 1);
+    // `ידניTHEN (` reads as a call, so the one error is inside it; nothing follows it.
+    expect(errors).toHaveLength(1);
+    expect([3, 4, 5]).toContain(errors[0].range.start.line);
+  });
+});

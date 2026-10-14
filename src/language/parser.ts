@@ -920,7 +920,11 @@ class Parser {
   private parseIfBranch(s: Stream, ifTok: Token): IfBranch {
     const condition = this.parseExpr(s);
     const onError = this.parseErrorClause(s);
-    s.expectWord('THEN');
+    if (!s.expectWord('THEN')) {
+      // Without THEN the condition ran into the consequent; checking either would only repeat the error.
+      while (!s.eol) s.next();
+      return { condition: { kind: 'error', range: condition.range }, onError, body: [], range: s.rangeFrom(ifTok) };
+    }
     const body = this.parseConsequent(s);
     return { condition, onError, body, range: s.rangeFrom(ifTok) };
   }
