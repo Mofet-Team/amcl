@@ -1,9 +1,9 @@
 {
   "name": "amcl",
   "displayName": "amcl",
-  "description": "Basic support for Honeywell's AM/CL language",
+  "description": "Language support for Honeywell TDC 3000 / TPS Control Language (CL/HPM, CL/APM, CL/PM, CL/AM)",
   "icon": "icon.png",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "publisher": "bazdalaz",
   "author": {
     "email": "bazdalaz@gmail.com",
@@ -13,55 +13,119 @@
     "color": "#0000FF",
     "theme": "dark"
   },
-  "license": "SEE LICENSE file",
+  "license": "SEE LICENSE IN LICENSE",
   "bugs": {
-    "url": "https://github.com/mofet-demo/amcl/issues",
-    "email": "p.zdarova@gmail.com"
+    "url": "https://github.com/Mofet-Team/amcl/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/mofet-demo/amcl.git"
+    "url": "https://github.com/Mofet-Team/amcl.git"
   },
   "engines": {
-    "vscode": "^1.47.0"
+    "vscode": "^1.82.0"
   },
   "categories": [
     "Programming Languages",
-    "Themes"
+    "Snippets"
   ],
   "keywords": [
-    "AM",
+    "Honeywell",
+    "TDC 3000",
+    "TPS",
     "CL",
-    "Application moduele",
-    "Control Language"
+    "Control Language",
+    "HPM",
+    "Application Module"
+  ],
+  "main": "./dist/client.js",
+  "activationEvents": [
+    "onLanguage:cl"
   ],
   "contributes": {
-	  "configurationDefaults": {
-		  "editor.quickSuggestions": true,
-		  "editor.tabSize": 4,
-		  "editor.insertSpaces": false,
-		  "editor.detectIndentation": true,
-		  "editor.trimAutoWhitespace": true,
-		  "editor.autoClosingBrackets": "always",
-		  "editor.tokenColorCustomizations": {
-			"textMateRules": [
-			  {
-				"scope": "entity.data_point",
-				"settings": {
-				  "fontStyle": "italic"
-				}
-			  }
-			]
-		  }
-	  },
+    "configurationDefaults": {
+      "[cl]": {
+        "files.encoding": "windows1255",
+        "editor.insertSpaces": true,
+        "editor.tabSize": 4,
+        "editor.detectIndentation": false,
+        "editor.quickSuggestions": {
+          "other": true,
+          "comments": false,
+          "strings": false
+        },
+        "outline.collapseItems": "alwaysCollapse"
+      },
+      "[cl-listing]": {
+        "files.encoding": "windows1255",
+        "editor.insertSpaces": true
+      }
+    },
     "configuration": {
-      "type": "object",
-      "title": "AMCL",
+      "title": "CL (Honeywell TDC 3000)",
       "properties": {
-        "amcl.enableColorDataPoints": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable highlighting for Data Points Tags"
+        "amcl.pointDatabase": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "window",
+          "markdownDescription": "Folders or `.EB` files exported from the TPS point database (Exception Build). Absolute, `~/`, or relative to the workspace folder. `.EB` files inside the workspace are always read.\n\nWith them the extension knows which HPM each sequence runs in, so `!BOX` variables link up across sequences, and points can be looked up by name."
+        },
+        "amcl.networkConfig": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "window",
+          "markdownDescription": "Network configuration files (`NCF.XX`) of your LCNs, or folders holding them. They only name LCNs: which LCN each point is on is worked out from the code, and HPMs are identified by LCN, UCN and node. With `A/sys/NCF.XX` and `B/sys/NCF.XX` the LCNs are shown as A and B."
+        },
+        "amcl.hebrewDescriptors": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "asStored"
+          ],
+          "default": "auto",
+          "scope": "window",
+          "enumDescriptions": [
+            "Detect descriptors stored in visual order (as the TPS stores them) and show them in logical order",
+            "Show descriptors exactly as stored in the point database"
+          ],
+          "markdownDescription": "How Hebrew point descriptors from the point database are shown in hovers."
+        },
+        "amcl.diagnostics.disabled": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "syntax",
+              "undefined",
+              "unused",
+              "string-length",
+              "send-length",
+              "loop-never-repeated",
+              "loop-label",
+              "serial-iop",
+              "remote-access",
+              "name-length",
+              "slot-range",
+              "mixed-logic",
+              "decl-after-phase",
+              "duplicate",
+              "dialect",
+              "external-bound",
+              "external-in-subroutine",
+              "const-expr",
+              "step-size",
+              "call-depth",
+              "wait-absolute"
+            ]
+          },
+          "default": [],
+          "scope": "window",
+          "markdownDescription": "Diagnostic codes not to report, for example `unused` or `remote-access` (which is only as current as the point database). The code is shown with each problem."
         }
       }
     },
@@ -74,11 +138,20 @@
         ],
         "extensions": [
           ".CL",
-          ".LS",
-          ".LE",
           ".EC"
         ],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "cl-listing",
+        "aliases": [
+          "CL Listing"
+        ],
+        "extensions": [
+          ".LS",
+          ".LE"
+        ],
+        "configuration": "./listing-configuration.json"
       }
     ],
     "grammars": [
@@ -93,6 +166,14 @@
         "injectTo": [
           "source.cl"
         ]
+      },
+      {
+        "language": "cl-listing",
+        "scopeName": "text.cl-listing",
+        "path": "./syntaxes/cl-listing.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.source.cl": "cl"
+        }
       }
     ],
     "snippets": [
@@ -100,14 +181,30 @@
         "language": "cl",
         "path": "./snippets/snippets.json"
       }
-    ],
-    "keybindings": [
-      {
-        "command": "editor.printFunctions",
-        "key": "ctrl+Enter cntr+Enter",
-        "mac": "ctrl+Enter cntr+Enter",
-        "when": "editor.editorTextFocus"
-      }
     ]
+  },
+  "dependencies": {
+    "vscode-languageclient": "9.0.1",
+    "vscode-languageserver": "9.0.1",
+    "vscode-languageserver-textdocument": "1.0.12"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "@types/vscode": "1.82.0",
+    "@vscode/vsce": "3.2.1",
+    "esbuild": "0.24.0",
+    "typescript": "5.6.3",
+    "vitest": "2.1.9"
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "pretest": "node esbuild.mjs",
+    "test": "vitest run",
+    "corpus": "node esbuild.mjs --corpus && node dist/corpus.js",
+    "vscode:prepublish": "npm run typecheck && node esbuild.mjs --production",
+    "package": "vsce package --out dist/amcl.vsix",
+    "install-local": "sh scripts/install-local.sh"
   }
 }

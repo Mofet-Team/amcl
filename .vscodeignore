@@ -1,0 +1,11 @@
+**
+!dist/client.js
+!dist/server.js
+!syntaxes/**
+!snippets/**
+!language-configuration.json
+!listing-configuration.json
+!icon.png
+!LICENSE
+!README.md
+!package.json

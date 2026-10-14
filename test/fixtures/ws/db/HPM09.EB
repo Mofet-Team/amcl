@@ -1,0 +1,70 @@
+{IDF NET>TEST>HPM09.DB, ENTITY MIXER( )                                         }
+&T PRMODNIM
+&N MIXER
+NODETYP  = HPM
+PTDESC   ="MIXER SEQUENCE          "
+NTWKNUM  = 01
+NODENUM  = 9
+SLOTNUM  = 10
+NN(001)=0.000000  NN(002)=1.000000
+{IDF NET>TEST>HPM09.DB, ENTITY DOSER( )                                         }
+&T PRMODNIM
+&N DOSER
+NODETYP  = HPM
+PTDESC   ="DOSER SEQUENCE          "
+NTWKNUM  = 01
+NODENUM  = 9
+SLOTNUM  = 11
+{IDF NET>TEST>HPM09.DB, ENTITY AGIT_ON( )                                       }
+&T FLAGNIM
+&N AGIT_ON
+NODETYP  = HPM
+PTDESC   ="AGITATOR RUN REQUEST    "
+NTWKNUM  = 01
+NODENUM  = 9
+SLOTNUM  = 21
+{IDF NET>TEST>HPM09.DB, ENTITY TANK_LVL( )                                      }
+&T NUMERNIM
+&N TANK_LVL
+NODETYP  = HPM
+PTDESC   ="TANK LEVEL              "
+EUDESC   ="%       "
+NTWKNUM  = 01
+NODENUM  = 9
+SLOTNUM  = 300
+{IDF NET>TEST>HPM09.DB, ENTITY ARR1( )                                          }
+&T ARRAY
+&N ARR1
+NODETYP  = HPM
+PTDESC   ="FLAGS 1001-1100         "
+NTWKNUM  = 01
+NODENUM  = 9
+EXTDATA  = NONE
+FLSTIX   = 1001
+NFLAG    = 100
+{IDF NET>TEST>HPM09.DB, ENTITY XV1( )                                           }
+&T DICMPNIM
+&N XV1
+NODETYP  = HPM
+PTDESC   ="FEED VALVE              "
+NTWKNUM  = 01
+NODENUM  = 9
+SLOTNUM  = 4
+NOSTATES = 2
+STATETXT(1) ="OPEN    "
+STATETXT(0) ="CLOSE   "
+DISRC(1) = !DI11S01.PVFL
+DISRC(2) = !DI11S02.PVFL
+DODSTN(1) = !DO33S01.SO
+DODSTN(2) = --
+{IDF NET>TEST>HPM09.DB, ENTITY FT100( )                                         }
+&T ANINNIM
+&N FT100
+NODETYP  = HPM
+PTDESC   ="FEED FLOW               "
+EUDESC   ="M3/H    "
+NTWKNUM  = 01
+NODENUM  = 9
+MODNUM   = 3
+SLOTNUM  = 12
+PNTMODTY = HLAI

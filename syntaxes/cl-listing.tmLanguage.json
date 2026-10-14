@@ -1,0 +1,50 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "CL Listing",
+  "scopeName": "text.cl-listing",
+  "patterns": [
+    {
+      "match": "^\\s*(\\*\\*ERROR\\s*\\*\\*)(.*)$",
+      "captures": {
+        "1": { "name": "invalid.illegal.error.cl-listing" },
+        "2": { "name": "markup.bold.error.cl-listing" }
+      }
+    },
+    {
+      "match": "^\\s*(\\*\\*WARNING\\s*\\*\\*)(.*)$",
+      "captures": {
+        "1": { "name": "markup.changed.warning.cl-listing" },
+        "2": { "name": "markup.italic.cl-listing" }
+      }
+    },
+    {
+      "match": "^\\s*(\\*\\*NOTE\\s*\\*\\*)(.*)$",
+      "captures": {
+        "1": { "name": "comment.note.cl-listing" },
+        "2": { "name": "comment.note.cl-listing" }
+      }
+    },
+    {
+      "match": "^\\s+\\^[\\s^]*$",
+      "name": "keyword.operator.caret.cl-listing"
+    },
+    {
+      "match": "^\\s*CL V\\d.*$",
+      "name": "comment.header.cl-listing"
+    },
+    {
+      "match": "^\\s*Line\\s+Loc\\s+.*$",
+      "name": "comment.header.cl-listing"
+    },
+    {
+      "begin": "^( {0,5}\\d{1,6})( {0,5}\\d{1,6}| {6})  ",
+      "beginCaptures": {
+        "1": { "name": "constant.numeric.line-number.cl-listing" },
+        "2": { "name": "comment.location.cl-listing" }
+      },
+      "end": "$",
+      "contentName": "meta.embedded.source.cl",
+      "patterns": [{ "include": "source.cl" }]
+    }
+  ]
+}

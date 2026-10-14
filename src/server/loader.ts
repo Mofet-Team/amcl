@@ -1,0 +1,82 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { TextDecoder } from 'util';
+
+const SKIP_DIRS = new Set(['node_modules', '.git', '.svn', '.hg', '.vscode', 'out', 'dist']);
+
+/** VS Code encoding ids (`windows1255`, `iso88598`, `utf8`) to WHATWG labels for TextDecoder. */
+export function decoderFor(vscodeEncoding: string | undefined): TextDecoder {
+  const id = (vscodeEncoding ?? 'windows1255').toLowerCase();
+  const label = id.startsWith('utf8')
+    ? 'utf-8'
+    : id.replace(/^windows(\d+)$/, 'windows-$1').replace(/^iso8859(\d+)$/, 'iso-8859-$1').replace(/^cp(\d+)$/, 'windows-$1');
+  try {
+    return new TextDecoder(label);
+  } catch {
+    return new TextDecoder('windows-1255');
+  }
+}
+
+export function uriToPath(uri: string): string | undefined {
+  return uri.startsWith('file:') ? fileURLToPath(uri) : undefined;
+}
+
+export function pathToUri(p: string): string {
+  return pathToFileURL(p).toString();
+}
+
+/** All files under `roots` whose name matches `re`, skipping build and VCS directories. */
+export async function findFiles(roots: string[], re: RegExp): Promise<string[]> {
+  const out: string[] = [];
+  const visit = async (p: string): Promise<void> => {
+    let stat: fs.Stats;
+    try {
+      stat = await fs.promises.stat(p);
+    } catch {
+      return;
+    }
+    if (stat.isFile()) {
+      if (re.test(p)) out.push(p);
+      return;
+    }
+    if (!stat.isDirectory()) return;
+    let entries: fs.Dirent[];
+    try {
+      entries = await fs.promises.readdir(p, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.isDirectory() && (SKIP_DIRS.has(e.name) || e.name.startsWith('.'))) continue;
+      const child = path.join(p, e.name);
+      if (e.isDirectory()) await visit(child);
+      else if (re.test(e.name)) out.push(child);
+    }
+  };
+  for (const r of roots) await visit(r);
+  return out;
+}
+
+export async function readText(p: string, decoder: TextDecoder): Promise<string | undefined> {
+  try {
+    const buf = await fs.promises.readFile(p);
+    // A binary file with a source extension: skip it rather than index garbage.
+    if (buf.includes(0)) return undefined;
+    return decoder.decode(buf);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Resolve `amcl.pointDatabase` entries: absolute, `~/`, or relative to a workspace folder. */
+export function resolvePaths(entries: string[], workspaceRoots: string[]): string[] {
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? '';
+  const out: string[] = [];
+  for (const e of entries) {
+    const expanded = e.startsWith('~/') ? path.join(home, e.slice(2)) : e;
+    if (path.isAbsolute(expanded)) out.push(expanded);
+    else for (const r of workspaceRoots) out.push(path.join(r, expanded));
+  }
+  return out;
+}
