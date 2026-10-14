@@ -138,7 +138,7 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
-### 0.3.0
+### 0.4.0
 
 - Language server: outline, go to definition, references, highlights, folding and diagnostics.
 - `.LS` / `.LE` listings are a separate language, so they are not checked as source.
