@@ -12,6 +12,8 @@ export interface NetworkConfig {
 
 export function parseNcf(text: string, file: string): NetworkConfig | undefined {
   if (!/\{NETWORK CONFIGURATION FILE\}/.test(text)) return undefined;
+  // NCF records are padded with NUL bytes.
+  // eslint-disable-next-line no-control-regex
   const descriptor = /SYSTEM DESCRIPTOR\s*:\s*([^\r\n\x00]*)/.exec(text)?.[1].trim();
   const ucns = new Set([...text.matchAll(/UNIVERSAL CONTROL NETWORK\s*:\s*(\d+)/g)].map((m) => Number(m[1])));
   const folder = /([^\\/]+)[\\/]sys[\\/][^\\/]+$/i.exec(file)?.[1];

@@ -189,21 +189,26 @@
     "vscode-languageserver-textdocument": "1.0.12"
   },
   "devDependencies": {
+    "@eslint/js": "9.17.0",
     "@types/node": "20.17.6",
     "@types/vscode": "1.82.0",
     "@vscode/vsce": "3.2.1",
     "esbuild": "0.24.0",
+    "eslint": "9.17.0",
+    "globals": "15.14.0",
     "typescript": "5.6.3",
+    "typescript-eslint": "8.18.2",
     "vitest": "2.1.9"
   },
   "scripts": {
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
     "pretest": "node esbuild.mjs",
     "test": "vitest run",
     "corpus": "node esbuild.mjs --corpus && node dist/corpus.js",
-    "vscode:prepublish": "npm run typecheck && node esbuild.mjs --production",
+    "vscode:prepublish": "npm run typecheck && npm run lint && node esbuild.mjs --production",
     "package": "vsce package --out dist/amcl.vsix",
     "install-local": "sh scripts/install-local.sh"
   }

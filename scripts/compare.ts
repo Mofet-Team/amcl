@@ -31,7 +31,7 @@ function listingMessages(listing: string): { source: string[]; messages: { line:
   const messages: { line: number; char: number; text: string }[] = [];
   let carets: number[] = [];
   for (const l of listing.split(/\r?\n/)) {
-    const src = /^( {0,5}\d{1,6})( {0,5}\d{1,6}| {6})  (.*)$/.exec(l);
+    const src = /^( {0,5}\d{1,6})( {0,5}\d{1,6}| {6}) {2}(.*)$/.exec(l);
     if (src && Number(src[1]) === source.length + 1) {
       source.push(src[3]);
       carets = [];

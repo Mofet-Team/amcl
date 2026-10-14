@@ -28,7 +28,7 @@ const decoder = new TextDecoder('windows-1255');
 function listingSource(listing: string): string[] {
   const out: string[] = [];
   for (const line of listing.split(/\r?\n/)) {
-    const m = line.match(/^( {0,5}\d{1,6})( {0,5}\d{1,6}| {6})  (.*)$/);
+    const m = line.match(/^( {0,5}\d{1,6})( {0,5}\d{1,6}| {6}) {2}(.*)$/);
     if (m && Number(m[1]) === out.length + 1) out.push(m[3]);
   }
   return out;

@@ -109,6 +109,7 @@ npm run install-local -- work   # build, package and install into the 'work' VS 
                                 # (no argument: the Default profile); then Reload Window
 npm run build        # bundle dist/client.js and dist/server.js
 npm test             # unit tests, fuzzing, and an end-to-end LSP test
+npm run lint         # ESLint; CI runs lint, typecheck and tests on every push
 npm run corpus -- <dir> --verified   # parse a directory of CL sources
 node dist/probe.js <cl-dir> <eb-dir> [FILE.CL LOCAL]   # index statistics; trace one LOCAL's storage
 ```
@@ -120,6 +121,9 @@ a watch build and a VS Code window running the extension from source. After an e
 `npm run corpus` parses every `.CL` file under a directory. With `--verified` it checks only files
 whose source matches the source column of their `.LS` listing, which compiled as they are, so any
 error it reports there is a bug in the parser.
+
+To release, bump `version` in `package.json`, commit, and push a tag `v<version>`: CI checks the
+code, builds `amcl.vsix` and attaches it to a draft GitHub release.
 
 ## Defaults for CL files
 

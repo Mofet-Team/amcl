@@ -34,7 +34,7 @@ export interface LexResult {
   diagnostics: Diagnostic[];
 }
 
-const IDENT_CHAR = /[A-Za-z0-9_$]|[^\x00-\x7F]/;
+const IDENT_CHAR = /[A-Za-z0-9_$]|\P{ASCII}/u;
 /**
  * Statement keywords that begin a new statement when they follow a blank or comment line, even
  * on an `&` line. The compiler treats a column-1 `&` like a space, and production code relies on it.
@@ -218,7 +218,7 @@ function lexLine(
     i++;
     if (c !== '&') {
       // Report a run of unexpected characters once.
-      while (i < src.length && /[^\sA-Za-z0-9_$"'!.,;:()=<>+*\/-]/.test(src[i]) && !isLocalLetter(src[i])) i++;
+      while (i < src.length && /[^\sA-Za-z0-9_$"'!.,;:()=<>+*/-]/.test(src[i]) && !isLocalLetter(src[i])) i++;
       error(line, start, i, `Unexpected character${i - start > 1 ? 's' : ''} '${src.slice(start, i)}'`);
     } else if (c === '&') {
       error(line, start, i, "A continuation '&' must be in column 1");
