@@ -237,3 +237,67 @@ describe('lint: compiler errors found before compiling', () => {
     ]);
   });
 });
+
+describe('lint: CALL arguments', () => {
+  const found = (src: string) => check(src).filter((m) => /^(call-args|argument-mode|duplicate)/.test(m));
+  const SUB = 'SUBROUTINE SUB (X: NUMBER; B: OUT LOGICAL; C: IN OUT NUMBER ARRAY (1..3))\nSET B = ON\nEND SUB';
+  const call = (stmt: string, decls = '') =>
+    found(`SEQUENCE S (HPM; POINT S)\nLOCAL N AT NN(1)\nLOCAL F: LOGICAL AT FL(1)\nLOCAL A: ARRAY (1..3) AT NN(2)\n${decls}\nPHASE P\n${stmt}\nEND S\n${SUB}`);
+
+  it('accepts a CALL that matches its subroutine', () => {
+    expect(call('CALL SUB (N, F, A)')).toEqual([]);
+    expect(call('CALL SUB (5, F, A)')).toEqual([]);
+    expect(call('CALL SUB (A(2), F, A)')).toEqual([]);
+  });
+
+  it('counts arguments', () => {
+    expect(call('CALL SUB (N, F)')).toEqual(['call-args: SUB takes 3 arguments, not 2: too few arguments']);
+    expect(call('CALL SUB (N, F, A, N)')).toEqual(['call-args: SUB takes 3 arguments, not 4: too many arguments']);
+  });
+
+  it('wants a variable for OUT and IN OUT, and no expressions', () => {
+    expect(call('CALL SUB (N, ON, A)')).toEqual([]);
+    expect(call('CALL SUB (N, 1, A)')).toEqual(['call-args: Argument 2 (B) is OUT: pass a variable (HP27-610 §3.2.13.2)']);
+    expect(call('CALL SUB (N + 1, F, A)')).toEqual([
+      'call-args: Argument 1 (X): only built-in subroutines take expressions; pass a variable or a constant (HP27-610 §3.2.13.2)',
+    ]);
+  });
+
+  it('wants constant indices', () => {
+    expect(call('CALL SUB (A(N), F, A)')).toEqual([
+      'call-args: Argument 1 (X): an array element passed to a subroutine needs a constant index (HP27-610 §3.2.13.2)',
+    ]);
+  });
+
+  it('compares the types of LOCALs and literals', () => {
+    expect(call('CALL SUB (F, F, A)')).toEqual(['call-args: Argument 1 (X): type mismatch, the subroutine takes NUMBER and this is LOGICAL']);
+    expect(call('CALL SUB (N, F, N)')).toEqual(['call-args: Argument 3 (C): type mismatch, the subroutine takes NUMBER ARRAY and this is NUMBER']);
+    expect(call('CALL SUB (A, F, A)')).toEqual(['call-args: Argument 1 (X): type mismatch, the subroutine takes NUMBER and this is NUMBER ARRAY']);
+  });
+
+  it('checks built-in subroutines and functions', () => {
+    expect(call('CALL SET_BAD (N)\nSET N = MAX(N, 1, 2)')).toEqual([]);
+    expect(call('CALL SET_BAD (N, N)')).toEqual(['call-args: Set_Bad(x) takes 1 argument, not 2']);
+    expect(call('SET N = ABS(N, 1)')).toEqual(['call-args: Abs(x) takes 1 argument, not 2']);
+    // A local array with the name of a built-in is the array.
+    expect(call('SET N = SUM(1)', 'LOCAL SUM: ARRAY (1..2) AT NN(9)')).toEqual([]);
+  });
+
+  it('does not let a subroutine set an IN argument, or pass on an element of an array argument', () => {
+    const sub = (body: string) => found(`SUBROUTINE T (X: NUMBER; Y: OUT NUMBER; Z: IN NUMBER ARRAY (1..2))\n${body}\nEND T\n${SUB}`);
+    expect(sub('SET Y = X')).toEqual([]);
+    expect(sub('SET X = 1\nSET Y = 0')).toEqual(['argument-mode: X is an IN argument: it can be read, not set (HP27-610 §4.5.1.2)']);
+    expect(sub('SET Y = Z(1)\nCALL SUB (Z(1), Y, Z)').filter((m) => /pass on/.test(m))).toEqual([
+      'call-args: Argument 1 (X): a subroutine cannot pass on one element of its array argument (HP27-610 §3.2.13.2)',
+    ]);
+    // Passed where SUB takes OUT (X) and IN OUT (Z): both could be set.
+    expect(sub('SET Y = X\nCALL SUB (X, X, Z)').filter((m) => m.startsWith('argument-mode'))).toEqual([
+      'argument-mode: X is an IN argument: it can be read, not set (HP27-610 §4.5.1.2)',
+      'argument-mode: Z is an IN argument: it can be read, not set (HP27-610 §4.5.1.2)',
+    ]);
+  });
+
+  it('reports an argument named twice', () => {
+    expect(found('SUBROUTINE T (X, X: NUMBER)\nEXIT\nEND T')).toEqual(['duplicate: X is already defined as a subroutine argument on line 1']);
+  });
+});

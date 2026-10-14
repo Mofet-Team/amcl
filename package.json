@@ -132,6 +132,8 @@
               "initiate",
               "structure",
               "heading",
+              "call-args",
+              "argument-mode",
               "compiler-error",
               "compiler-warning",
               "compiler-note",

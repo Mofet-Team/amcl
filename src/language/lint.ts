@@ -6,6 +6,7 @@ import { Declaration, Expr, HandlerRef, Ident, Routine, SourceFile, Statement, T
 import { Binding, ClSymbol } from './binder';
 import { PointRecord } from './eb';
 import { Diagnostic, Range, Severity } from './types';
+import { BUILTINS } from './builtins';
 import { formatBox } from './workspace';
 import { walkExpr } from './walk';
 
@@ -48,6 +49,8 @@ class Linter {
   private readonly handlerTypes = new Map<string, string>();
   /** True while checking a handler's RESTART section. */
   private inRestart = false;
+  /** Subroutines of the file by name, for checking CALLs. */
+  private readonly subroutines = new Map<string, Extract<Unit, { kind: 'subroutine' }>>();
 
   constructor(
     private readonly file: SourceFile,
@@ -56,11 +59,15 @@ class Linter {
   ) {
     for (const r of binding.references) this.resolved.set(r.ident, r.symbol);
     const all = (us: Unit[]): Unit[] => us.flatMap((u) => (u.kind === 'package' ? all(u.units) : [u]));
-    for (const u of all(file.units)) if (u.kind === 'handler' && u.name) this.handlerTypes.set(u.name.name, u.handlerType);
+    for (const u of all(file.units)) {
+      if (u.kind === 'handler' && u.name) this.handlerTypes.set(u.name.name, u.handlerType);
+      if (u.kind === 'subroutine' && u.name) this.subroutines.set(u.name.name, u);
+    }
   }
 
   run(): LintDiagnostic[] {
     this.units(this.file.units, undefined);
+    this.argumentModes();
     this.unused();
     this.callDepth();
     return this.out;
@@ -125,13 +132,16 @@ class Linter {
         if (unit.restart) this.gotoAcrossRestart(unit.routine, unit.restart.routine);
         if (!unit.routine.statements.length && !unit.routine.steps.length) this.empty(unit.headerRange, 'handler');
         break;
-      case 'subroutine':
+      case 'subroutine': {
         routines.push(unit.routine);
+        const args = new Map<string, Ident>();
+        for (const a of unit.args) for (const n of a.names) this.duplicate(args, n, 'subroutine argument');
         if (!unit.routine.statements.length && !unit.routine.steps.length) this.empty(unit.headerRange, 'subroutine');
         for (const d of unit.declarations) {
           if (d.kind === 'external') this.report(d.range, 'external-in-subroutine', 'EXTERNAL is not allowed in a subroutine (HP27-610 §2.6)', Severity.Error);
         }
         break;
+      }
     }
 
     // Step names are unique across a handler and its RESTART section.
@@ -244,6 +254,7 @@ class Linter {
         break;
       case 'call':
         s.args.forEach(e);
+        if (dialect !== 'AM') this.callArguments(s, unit);
         break;
       case 'wait':
         e(s.value);
@@ -314,6 +325,116 @@ class Linter {
     }
   }
 
+  /**
+   * A CALL passes what its subroutine declares [HP27-610 §3.2.13]: as many arguments, a variable
+   * for OUT and IN OUT, expressions to built-in subroutines only, constant indices, and values
+   * of the declared type.
+   */
+  private callArguments(s: Extract<Statement, { kind: 'call' }>, unit: Unit): void {
+    if (!s.target) return;
+    if (s.args.length > MAX_CALL_ARGS) {
+      this.report(s.args[MAX_CALL_ARGS].range, 'call-args', `A CALL passes at most ${MAX_CALL_ARGS} arguments (HP27-610 §3.2.13)`, Severity.Error);
+    }
+    const sub = this.resolved.get(s.target)?.kind === 'subroutine' ? this.subroutines.get(s.target.name) : undefined;
+    if (!sub) {
+      const b = BUILTIN_ARITY.get(s.target.name);
+      if (b?.kind === 'subroutine' && !this.resolved.get(s.target)) this.arity(s.target, s.args.length, b);
+      return;
+    }
+    const formals = sub.args.flatMap((a) => a.names.map((name) => ({ name, mode: a.mode, type: a.type })));
+    if (formals.length !== s.args.length) {
+      this.report(
+        s.target.range,
+        'call-args',
+        `${s.target.text} takes ${formals.length} argument${formals.length === 1 ? '' : 's'}, not ${s.args.length}: too ${s.args.length < formals.length ? 'few' : 'many'} arguments`,
+        Severity.Error,
+      );
+    }
+    s.args.forEach((actual, i) => {
+      const formal = formals[i];
+      const what = `Argument ${i + 1}${formal ? ` (${formal.name.text})` : ''}`;
+      if (!isVariable(actual) && !isLiteral(actual)) {
+        this.report(actual.range, 'call-args', `${what}: only built-in subroutines take expressions; pass a variable or a constant (HP27-610 §3.2.13.2)`, Severity.Error);
+        return;
+      }
+      if (formal && formal.mode !== 'IN' && !isVariable(actual)) {
+        this.report(actual.range, 'call-args', `${what} is ${formal.mode}: pass a variable (HP27-610 §3.2.13.2)`, Severity.Error);
+        return;
+      }
+      if (actual.kind === 'apply' && actual.args.length === 1 && constantNumber(actual.args[0]) === undefined) {
+        this.report(actual.args[0].range, 'call-args', `${what}: an array element passed to a subroutine needs a constant index (HP27-610 §3.2.13.2)`, Severity.Error);
+        return;
+      }
+      if (unit.kind === 'subroutine' && actual.kind === 'apply' && actual.callee.kind === 'name' && this.resolved.get(actual.callee.id)?.kind === 'argument') {
+        this.report(actual.range, 'call-args', `${what}: a subroutine cannot pass on one element of its array argument (HP27-610 §3.2.13.2)`, Severity.Error);
+        return;
+      }
+      if (formal) this.argumentType(actual, formal, what);
+    });
+  }
+
+  /** The type of a literal or a declared LOCAL against the type of the argument it is passed to. */
+  private argumentType(actual: Expr, formal: { type?: TypeSpec }, what: string): void {
+    const expected = valueType(formal.type);
+    let got: { family: string; array: boolean } | undefined;
+    if (actual.kind === 'number' || (actual.kind === 'unary' && actual.op === '-' && actual.operand.kind === 'number')) got = { family: 'NUMBER', array: false };
+    const local = (id: Ident) => {
+      const d = this.resolved.get(id)?.declaration;
+      return d?.kind === 'local' && d.at ? valueType(d.type) : undefined;
+    };
+    if (actual.kind === 'name') got = local(actual.id);
+    if (actual.kind === 'apply' && actual.callee.kind === 'name') {
+      const t = local(actual.callee.id);
+      if (t?.array) got = { family: t.family, array: false };
+    }
+    if (!got || !expected) return;
+    if (got.family !== expected.family || got.array !== expected.array) {
+      const word = (t: { family: string; array: boolean }) => `${t.family === 'STATES' ? 'a state list' : t.family}${t.array ? ' ARRAY' : ''}`;
+      this.report(actual.range, 'call-args', `${what}: type mismatch, the subroutine takes ${word(expected)} and this is ${word(got)}`, Severity.Error);
+    }
+  }
+
+  private arity(id: Ident, count: number, b: { min: number; max: number; signature: string }): void {
+    if (count < b.min || count > b.max) {
+      const n = b.min === b.max ? `${b.min}` : `${b.min} to ${b.max}`;
+      this.report(id.range, 'call-args', `${b.signature} takes ${n} argument${b.max === 1 ? '' : 's'}, not ${count}`, Severity.Error);
+    }
+  }
+
+  /**
+   * IN arguments can only be read [HP27-610 §4.5.1.2]: not the target of SET, READ, a state
+   * change, a LOOP, or an OUT argument of another CALL. Reading an OUT argument is wrong by the
+   * manual too, but the compiler accepts it, and programs rely on it.
+   */
+  private argumentModes(): void {
+    const targets = new Set<Ident>();
+    const root = (x: Expr): Ident | undefined => (x.kind === 'name' ? x.id : x.kind === 'apply' && x.callee.kind === 'name' ? x.callee.id : undefined);
+    const all = (us: Unit[]): Unit[] => us.flatMap((u) => (u.kind === 'package' ? all(u.units) : [u]));
+    for (const u of all(this.file.units)) {
+      if (u.kind !== 'subroutine') continue;
+      eachStatement([...u.routine.statements, ...u.routine.steps.flatMap((st) => st.statements)], (s) => {
+        const set = (xs: Expr[]) => xs.forEach((x) => { const id = root(x); if (id) targets.add(id); });
+        if (s.kind === 'set' || s.kind === 'read' || s.kind === 'stateChange') set(s.targets);
+        if (s.kind === 'loop' && s.counter) targets.add(s.counter);
+        if (s.kind === 'call' && s.target) {
+          const callee = this.subroutines.get(s.target.name);
+          const modes = callee?.args.flatMap((a) => a.names.map(() => a.mode)) ?? [];
+          s.args.forEach((x, i) => {
+            if (modes[i] && modes[i] !== 'IN') set([x]);
+          });
+        }
+      });
+    }
+    for (const r of this.binding.references) {
+      const sym = r.symbol;
+      if (r.isDefinition || sym?.kind !== 'argument' || !sym.detail || sym.detail === 'function argument') continue;
+      const mode = sym.detail.startsWith('IN OUT') ? 'IN OUT' : sym.detail.startsWith('OUT') ? 'OUT' : 'IN';
+      if (mode === 'IN' && targets.has(r.ident)) {
+        this.report(r.ident.range, 'argument-mode', `${r.ident.text} is an IN argument: it can be read, not set (HP27-610 §4.5.1.2)`, Severity.Error);
+      }
+    }
+  }
+
   /** Handlers named in an ENB statement or PHASE heading are of the type named with them. */
   private handlerRefs(refs: HandlerRef[]): void {
     for (const h of refs) {
@@ -365,6 +486,10 @@ class Linter {
       }
       const slot = slotOf(x);
       if (slot) this.slotRange(slot, dialect, bound);
+      if (x.kind === 'apply' && x.callee.kind === 'name' && !this.resolved.get(x.callee.id)) {
+        const b = BUILTIN_ARITY.get(x.callee.id.name);
+        if (b && b.kind !== 'subroutine') this.arity(x.callee.id, x.args.length, b);
+      }
       if (x.kind === 'member' && x.object.kind === 'name') {
         this.boundPrefix(x.object.id, bound, dialect);
         if (!remoteAllowed) this.remoteAccess(x.object.id, unit, dialect, bound, stmt);
@@ -611,6 +736,36 @@ export function unusedSymbols(binding: Binding): Set<ClSymbol> {
 }
 
 const LOGICAL_OPS = new Set(['AND', 'OR', 'XOR']);
+
+const MAX_CALL_ARGS = 32;
+
+/** Argument counts of the built-ins, from their signatures: `Avg(x, y, ...)` takes 1 to 16. */
+const BUILTIN_ARITY = new Map(
+  BUILTINS.map((b) => {
+    const inner = /\((.*)\)/.exec(b.signature)?.[1];
+    const params = inner === undefined || inner.trim() === '' ? [] : inner.split(',');
+    const variadic = params.some((p) => p.includes('...'));
+    return [b.name, { kind: b.kind, signature: b.signature.replace(/^CALL /, ''), min: variadic ? 1 : params.length, max: variadic ? 16 : params.length }];
+  }),
+);
+
+/** Something a CALL can store into: a name, a parameter, or an indexed element. */
+function isVariable(x: Expr): boolean {
+  return x.kind === 'name' || x.kind === 'member' || (x.kind === 'apply' && (x.callee.kind === 'name' || x.callee.kind === 'member'));
+}
+
+function isLiteral(x: Expr): boolean {
+  return x.kind === 'number' || x.kind === 'string' || (x.kind === 'unary' && x.op === '-' && x.operand.kind === 'number');
+}
+
+/** The value type of a declared LOCAL or argument; undefined for types this does not compare. */
+function valueType(t: TypeSpec | undefined): { family: string; array: boolean } | undefined {
+  const array = !!t && (t.kind === 'array' || !!t.array);
+  if (!t || t.kind === 'array') return { family: 'NUMBER', array };
+  if (t.kind === 'states') return { family: 'STATES', array };
+  const name = t.name.name === 'FLAG' ? 'LOGICAL' : t.name.name;
+  return ['NUMBER', 'LOGICAL', 'TIME', 'STRING'].includes(name) ? { family: name, array } : undefined;
+}
 
 /** Symbols the compiler reports as "Defined But Not Referenced" when nothing uses them. */
 const UNUSED_KINDS = new Set(['local', 'external', 'constant', 'label', 'handler', 'subroutine', 'argument']);

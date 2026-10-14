@@ -70,6 +70,10 @@ parameter lists and enumerations.
       WHEN ERROR on INITIATE of the program's own handler.
     - Structure: statements before the first STEP of a routine that has steps, a phase, step,
       handler or subroutine with no statements, and a sequence that INITIATEs itself.
+    - CALL: the number of arguments (also for built-in functions and subroutines), at most 32,
+      a variable for OUT and IN OUT, expressions only to built-in subroutines, constant indices,
+      no element of an array argument passed on, the types of LOCALs and literals against the
+      subroutine's, and a subroutine setting one of its IN arguments.
 
     None of these fires on the corpus of sources that compiled as they are.
   - Warnings, as the compiler gives them: names defined but not referenced (shown faded),
@@ -173,7 +177,8 @@ Bug reports are welcome!
 ### Unreleased
 
 - About 25 compiler errors caught while editing: LOCAL locations and types, loop counters and
-  REPEATs, handler types and RESTART sections, PHASE headings, and routine structure.
+  REPEATs, handler types and RESTART sections, PHASE headings, routine structure, and CALL
+  arguments.
 - Compiler listings: `.LS` and `.LE` messages on the source, workspace-wide `.LE` errors in the
   Problems panel, and diagnostics, outline, hover and go to source inside listings.
 - ESLint, and a CI workflow that checks every push and builds the package for a tagged release.
