@@ -104,6 +104,8 @@ parameter lists and enumerations.
   - In an open listing: squiggles at the compiler's carets, an outline of the messages by
     severity, a hover that names the compiler pass and severity of each of the ~400 compiler
     messages, and **Go to Definition** from a listing line to that line in the source.
+  - Notes, such as "All enabled abnormal handlers are disabled", are hints: dots in the editor
+    with the message on hover, not entries in the Problems panel.
   - Codes `compiler-error`, `compiler-warning`, `compiler-note` and `compiler-stale`. Compiler
     warnings the extension reports itself (unused names, for example) are shown once.
 - Snippets, comment toggling, bracket matching

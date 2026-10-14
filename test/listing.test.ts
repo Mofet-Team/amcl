@@ -115,7 +115,7 @@ describe('compilerDiagnostics', () => {
     const d = compilerDiagnostics([file(heaterLs, 'LS')], heater, [], new Set(), uri);
     expect(d.map((x) => [x.code, x.severity, x.range.start.line])).toEqual([
       ['compiler-warning', 2, 2],
-      ['compiler-note', 3, 4],
+      ['compiler-note', 4, 4],
     ]);
     expect(d[0]).toMatchObject({ source: 'CL compiler', relatedInformation: [{ location: { uri: 'file:///x/HEATER.LS', range: { start: { line: 7 } } } }] });
   });

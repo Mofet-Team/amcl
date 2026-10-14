@@ -4,7 +4,7 @@ import { Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity } from 'vs
 import { LintDiagnostic } from '../language/lint';
 import { Listing, parseListing, placeMessages } from '../language/listing';
 import { Severity } from '../language/types';
-import { COMPILER_SOURCE, compilerCode } from './features/listing';
+import { COMPILER_SOURCE, compilerCode, compilerSeverity } from './features/listing';
 
 export const LISTING_FILE = /\.(ls|le)$/i;
 
@@ -121,7 +121,7 @@ export function compilerDiagnostics(
       out.push({
         range: { start: { line: p.line, character: p.start }, end: { line: p.line, character: p.end } },
         message: m.text,
-        severity: m.severity as DiagnosticSeverity,
+        severity: compilerSeverity(m),
         code,
         source: stale ? `${COMPILER_SOURCE}, earlier compile` : COMPILER_SOURCE,
         relatedInformation: [related(m.listingLine, `${m.kind} in ${name}`)],

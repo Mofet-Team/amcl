@@ -5,6 +5,14 @@ import { Severity } from '../../language/types';
 
 export const COMPILER_SOURCE = 'CL compiler';
 
+/**
+ * How a compiler message shows in the editor. Notes are hints: kept out of the Problems panel,
+ * since "All enabled abnormal handlers are disabled" follows nearly every PHASE heading.
+ */
+export function compilerSeverity(m: ListingMessage): DiagnosticSeverity {
+  return m.severity === Severity.Information ? DiagnosticSeverity.Hint : (m.severity as DiagnosticSeverity);
+}
+
 export function compilerCode(m: ListingMessage): string {
   return m.severity === Severity.Error ? 'compiler-error' : m.severity === Severity.Warning ? 'compiler-warning' : 'compiler-note';
 }
@@ -29,7 +37,7 @@ export function listingDiagnostics(listing: Listing, disabled: Set<string>): Dia
     .map((m) => ({
       range: listingRange(m),
       message: m.text,
-      severity: m.severity as DiagnosticSeverity,
+      severity: compilerSeverity(m),
       code: compilerCode(m),
       source: COMPILER_SOURCE,
     }));
