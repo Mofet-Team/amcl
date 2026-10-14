@@ -618,6 +618,14 @@ class Parser {
         closeStep(lastRange());
         s.next();
         s.finish();
+        if (ctx.handler.restart) {
+          // Keep the statements: they continue the first RESTART section.
+          this.error(tokenRange(first), 'A handler has one RESTART section', 'heading');
+          routine = ctx.handler.restart.routine;
+          step = routine.steps[routine.steps.length - 1];
+          this.index++;
+          continue;
+        }
         const restartRoutine: Routine = { statements: [], steps: [] };
         ctx.handler.restart = { routine: restartRoutine, range: tokenRange(first) };
         routine = restartRoutine;
@@ -672,17 +680,22 @@ class Parser {
       range: tokenRange(first),
     };
     if (s.acceptPunct('(')) {
+      // Clause rules of HP27-610 §4.1.4.2, reported here because the phase keeps one of each.
+      let keepEnb: Token | undefined;
       do {
         const w = s.word();
         if (w === 'ALARM') {
-          s.next();
-          phase.alarm = this.parseExpr(s);
+          const t = s.next();
+          const alarm = this.parseExpr(s);
+          if (phase.alarm) this.error(tokenRange(t), 'A PHASE heading has one ALARM clause', 'heading');
+          else phase.alarm = alarm;
         } else if (w === 'KEEPENB') {
-          s.next();
+          keepEnb = s.next();
           phase.keepEnb = true;
         } else if (w && HANDLER_TYPES.has(w)) {
-          s.next();
+          const t = s.next();
           const name = s.ident('a handler name');
+          if (phase.handlers.some((h) => h.type === w)) this.error(tokenRange(t), `${w} appears twice in this PHASE heading (HP27-610 §4.1.4.2)`, 'heading');
           if (name) phase.handlers.push({ type: w as HandlerRef['type'], name });
         } else {
           s.error('Expected ALARM, KEEPENB, HOLD, SHUTDOWN or EMERGENCY');
@@ -690,6 +703,9 @@ class Parser {
         }
       } while (s.acceptPunct(';'));
       s.expectPunct(')');
+      if (keepEnb && phase.handlers.length) {
+        this.error(tokenRange(keepEnb), 'A PHASE heading names handlers or KEEPENB, not both (HP27-610 §4.1.4.2)', 'heading');
+      }
     }
     s.finish();
     return phase;
@@ -1026,7 +1042,7 @@ class Parser {
         const own = s.word();
         if (own && HANDLER_TYPES.has(own)) {
           s.next();
-          return done({ kind: 'initiate', handlerType: own });
+          return done({ kind: 'initiate', handlerType: own, onError: this.parseErrorClause(s) });
         }
         const target = s.anyIdent('a point name');
         let handlerType: string | undefined;
@@ -1251,8 +1267,8 @@ class Parser {
 
   // ---------------------------------------------------------------- helpers
 
-  private error(range: Range, message: string): void {
-    this.diagnostics.push({ range, message, severity: Severity.Error, code: 'syntax' });
+  private error(range: Range, message: string, code = 'syntax'): void {
+    this.diagnostics.push({ range, message, severity: Severity.Error, code });
   }
 
   private warn(range: Range, message: string): void {

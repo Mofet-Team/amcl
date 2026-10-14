@@ -136,3 +136,104 @@ describe('lint', () => {
     });
   });
 });
+
+describe('lint: compiler errors found before compiling', () => {
+  const NEW = new Set(['local-location', 'local-type', 'array-bounds', 'external-order', 'loop-counter', 'loop-range', 'repeat', 'handler', 'initiate', 'structure']);
+  const found = (src: string) => check(src).filter((m) => NEW.has(m.split(':')[0]));
+  const hpmDecl = (decls: string) => found(hpm('EXIT', decls));
+
+  it('checks LOCAL locations and their types', () => {
+    expect(hpmDecl('LOCAL A AT NN(1)\nLOCAL B: LOGICAL AT FL(2)\nLOCAL C: TIME AT TIME(1)\nLOCAL D: STRING AT STR16(2)\nLOCAL E: ON/OFF AT FL(3)\nLOCAL F: ARRAY (1..3) AT NN(4)')).toEqual([]);
+    expect(hpmDecl('LOCAL A: LOGICAL AT NN(1)')).toEqual(['local-type: A LOGICAL LOCAL maps to FL, not NN (HP27-610 Table 2-4)']);
+    expect(hpmDecl('LOCAL A AT FL(1)')).toEqual(['local-type: A NUMBER LOCAL maps to NN, not FL (HP27-610 Table 2-4)']);
+    expect(hpmDecl('LOCAL A AT PV(1)')).toEqual(['local-location: A LOCAL maps to NN, FL, TIME or STRn, not PV (HP27-610 Table 2-4)']);
+    expect(hpmDecl('LOCAL A AT NN(1.5)')).toEqual(['local-location: The location index must be an integer']);
+    expect(hpmDecl('LOCAL A: ON/OFF/AUTO AT FL(1)')).toEqual(['local-type: A LOCAL state list has exactly two states (HP27-610 §2.6.2.1)']);
+    expect(hpmDecl('LOCAL A, B AT NN(1)')[0]).toMatch(/^local-location: Only one variable per LOCAL/);
+    expect(found('SEQUENCE S (PM; POINT S)\nLOCAL C: TIME AT TIME(1)\nPHASE P\nSET C = 1 SECS\nEND S')).toEqual(['local-location: A LOCAL maps to NN or FL, not TIME (HP27-610 Table 2-4)']);
+  });
+
+  it('allows two LOCALs on one location, as aliases', () => {
+    expect(hpmDecl('LOCAL A AT NN(1)\nLOCAL B AT NN(1)')).toEqual([]);
+  });
+
+  it('checks array bounds', () => {
+    expect(hpmDecl('LOCAL A: ARRAY (5..3) AT NN(1)')).toEqual(['array-bounds: The lower bound must be less than the upper bound (HP27-610 §2.6.2.2)']);
+  });
+
+  it('wants the EXTERNAL of a point before LOCALs on it', () => {
+    expect(hpmDecl('EXTERNAL R2\nLOCAL A AT R2.NN(1)')).toEqual([]);
+    expect(hpmDecl('LOCAL A AT R2.NN(1)\nEXTERNAL R2')).toEqual(['external-order: The LOCAL must follow EXTERNAL R2 (HP27-610 §2.6.2.2)']);
+    expect(hpmDecl('LOCAL A AT R3.NN(1)')).toEqual(['external-order: R3 is not declared EXTERNAL']);
+    expect(hpmDecl('LOCAL A AT S.NN(1)').filter((m) => m.startsWith('external-order'))).toEqual([]);
+  });
+
+  it('checks loop counters, ranges and REPEATs', () => {
+    const loop = (body: string, decls = 'LOCAL I AT NN(1)') => found(hpm(body, decls));
+    expect(loop('L: LOOP FOR I IN 1..5\nREPEAT L')).toEqual([]);
+    expect(loop('L: LOOP FOR J IN 1..5\nREPEAT L')).toEqual(['loop-counter: Loop counter J is not declared']);
+    expect(loop('L: LOOP FOR I IN 1..5\nREPEAT L', 'LOCAL I: LOGICAL AT FL(1)')).toEqual([
+      'loop-counter: Loop counter I must be a scalar Number LOCAL or subroutine argument (HP27-610 §3.2.9.2)',
+    ]);
+    expect(loop('L: LOOP FOR I IN 1..5\nREPEAT L', 'LOCAL I = 3')[0]).toMatch(/^loop-counter: .* must be a scalar Number/);
+    expect(loop('L: LOOP FOR I IN 20..10\nREPEAT L')).toEqual([
+      'loop-range: The loop counts up from 20 and never reaches 10: decrementing loops are not supported (HP27-610 §3.2.9.3)',
+    ]);
+    expect(loop('L: SET !BOX.NN(2) = 1\nREPEAT L')).toEqual(['repeat: L does not label a LOOP (HP27-610 §3.2.10)']);
+    expect(loop('L: LOOP FOR I IN 1..5\nIF I = 2 THEN REPEAT L\nREPEAT L')).toEqual([
+      'repeat: Loop L already has a REPEAT: a loop has only one (HP27-610 §3.2.10)',
+    ]);
+  });
+
+  it('accepts a loop counter that is a subroutine argument', () => {
+    expect(found('SUBROUTINE SUB (N: IN NUMBER)\nL: LOOP FOR N IN 1..3\nREPEAT L\nEND SUB')).toEqual([]);
+  });
+
+  const withHandlers = (phase: string, handlers: string) => `SEQUENCE S (HPM; POINT S)\nPHASE P ${phase}\nEXIT\nEND S\n${handlers}`;
+
+  it('checks handler types, RESTART and RESUME', () => {
+    const hold = 'HOLD HANDLER H1\nEXIT\nRESTART\nRESUME PHASE P\nEND H1';
+    const emergency = 'EMERGENCY HANDLER E1\nEXIT\nEND E1';
+    expect(found(withHandlers('(HOLD H1; EMERGENCY E1)', `${hold}\n${emergency}`))).toEqual([]);
+    expect(found(withHandlers('(SHUTDOWN H1)', hold))).toEqual(['handler: H1 is a HOLD handler, not SHUTDOWN']);
+    expect(found(withHandlers('', 'EMERGENCY HANDLER E1\nEXIT\nRESTART\nEXIT\nEND E1'))).toEqual([
+      'handler: An EMERGENCY handler cannot have a RESTART section (HP27-610 §4.4)',
+    ]);
+    expect(found(`SEQUENCE S (HPM; POINT S)\nPHASE P\nRESUME PHASE P\nEND S`)).toEqual([
+      'handler: RESUME is allowed only in the RESTART section of a handler (HP27-610 §3.2.17)',
+    ]);
+  });
+
+  it('checks ENB statements', () => {
+    const handlers = 'HOLD HANDLER H1\nEXIT\nEND H1\nHOLD HANDLER H2\nEXIT\nEND H2';
+    const enb = (stmt: string) => found(`SEQUENCE S (HPM; POINT S)\nPHASE P\n${stmt}\nEND S\n${handlers}`);
+    expect(enb('ENB HOLD H1')).toEqual([]);
+    expect(enb('ENB HOLD H1, HOLD H2')).toEqual(['handler: HOLD appears twice in this ENB (HP27-610 §3.2.6)']);
+    expect(enb('ENB EMERGENCY H1')).toEqual(['handler: H1 is a HOLD handler, not EMERGENCY']);
+  });
+
+  it('does not let a GOTO STEP cross a RESTART heading', () => {
+    const h = 'HOLD HANDLER H1\nSTEP A\nGOTO STEP B\nRESTART\nSTEP B\nGOTO STEP C\nSTEP C\nEXIT\nEND H1';
+    expect(found(withHandlers('(HOLD H1)', h))).toEqual(['handler: A GOTO cannot cross the RESTART heading to step B (HP27-610 §4.4)']);
+  });
+
+  it('checks INITIATE of the program itself', () => {
+    const seq = (stmt: string) => found(`SEQUENCE S (HPM; POINT S)\nEXTERNAL M\nPHASE P\n${stmt}\nEND S`);
+    expect(seq('INITIATE M (WHEN ERROR FAIL)')).toEqual([]);
+    expect(seq('INITIATE HOLD')).toEqual([]);
+    expect(seq('INITIATE HOLD (WHEN ERROR FAIL)')).toEqual([
+      "initiate: WHEN ERROR is not allowed on INITIATE of this program's own handler (HP27-610 §3.2.15.4)",
+    ]);
+    expect(seq('INITIATE S')).toEqual(["initiate: S is this program's own point: a sequence cannot INITIATE itself"]);
+  });
+
+  it('checks the structure of routines', () => {
+    expect(found(hpm('STEP A\nEXIT'))).toEqual(['structure: A routine with steps begins with a STEP heading (HP27-610 §4.1.2)']);
+    expect(found('SEQUENCE S (HPM; POINT S)\nPHASE P\nPHASE Q\nEXIT\nEND S')).toEqual([
+      'structure: This PHASE has no statements: it must contain executable statements',
+    ]);
+    expect(found('SEQUENCE S (HPM; POINT S)\nPHASE P\nSTEP A\nSTEP B\nEXIT\nEND S')).toEqual([
+      'structure: This STEP has no statements: it must contain executable statements',
+    ]);
+  });
+});

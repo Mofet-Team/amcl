@@ -57,6 +57,21 @@ parameter lists and enumerations.
     characters; AND/OR mixed without parentheses; declarations after the first PHASE; duplicate
     names; statements the dialect does not have (WAIT in CL/AM, WHEN ERROR in CL/PM, DEFINE in
     CL/HPM); the bound point named in EXTERNAL; `/` or MOD in a constant; LOOP without a label.
+  - Errors the compiler would give, caught before compiling:
+    - LOCALs: a location that is not NN, FL, TIME or STRn (NN or FL in CL/PM), a type that does
+      not fit it (`LOGICAL AT NN`), a non-integer index, several names in one LOCAL ... AT, a
+      state list without exactly two states, array bounds that do not rise, and a LOCAL on a
+      point declared EXTERNAL later or not at all.
+    - Loops: a counter that is not a declared scalar Number, a range that counts down, a REPEAT
+      whose label is not a LOOP, and a second REPEAT of one loop.
+    - Handlers: a handler named with the wrong type in ENB or a PHASE heading, a type twice in
+      one ENB or heading, KEEPENB with handlers, two ALARM clauses, a RESTART in an EMERGENCY
+      handler or twice in one handler, RESUME outside RESTART, a GOTO STEP across RESTART, and
+      WHEN ERROR on INITIATE of the program's own handler.
+    - Structure: statements before the first STEP of a routine that has steps, a phase, step,
+      handler or subroutine with no statements, and a sequence that INITIATEs itself.
+
+    None of these fires on the corpus of sources that compiled as they are.
   - Warnings, as the compiler gives them: names defined but not referenced (shown faded),
     strings over 64 characters, a LOOP never repeated.
   - Warnings the compiler does not give: messages longer than the 60 characters the CRT shows,
@@ -157,6 +172,8 @@ Bug reports are welcome!
 ## Release Notes
 ### Unreleased
 
+- About 25 compiler errors caught while editing: LOCAL locations and types, loop counters and
+  REPEATs, handler types and RESTART sections, PHASE headings, and routine structure.
 - Compiler listings: `.LS` and `.LE` messages on the source, workspace-wide `.LE` errors in the
   Problems panel, and diagnostics, outline, hover and go to source inside listings.
 - ESLint, and a CI workflow that checks every push and builds the package for a tagged release.

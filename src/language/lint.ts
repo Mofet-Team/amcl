@@ -2,7 +2,7 @@
 // the compiler enforces are errors; rules the compiler warns about, or that fail at run time,
 // are warnings. Section tags cite HP27-610 (CL/HPM) and AM27-610 (CL/AM).
 
-import { Declaration, Expr, Ident, Routine, SourceFile, Statement, Unit } from './ast';
+import { Declaration, Expr, HandlerRef, Ident, Routine, SourceFile, Statement, TypeSpec, Unit } from './ast';
 import { Binding, ClSymbol } from './binder';
 import { PointRecord } from './eb';
 import { Diagnostic, Range, Severity } from './types';
@@ -42,12 +42,22 @@ export function lint(file: SourceFile, binding: Binding, env?: LintEnvironment):
 
 class Linter {
   private readonly out: LintDiagnostic[] = [];
+  /** What each name resolved to, by its occurrence. */
+  private readonly resolved = new Map<Ident, ClSymbol | undefined>();
+  /** Handler types by handler name, for checking ENB and PHASE headings. */
+  private readonly handlerTypes = new Map<string, string>();
+  /** True while checking a handler's RESTART section. */
+  private inRestart = false;
 
   constructor(
     private readonly file: SourceFile,
     private readonly binding: Binding,
     private readonly env: LintEnvironment | undefined,
-  ) {}
+  ) {
+    for (const r of binding.references) this.resolved.set(r.ident, r.symbol);
+    const all = (us: Unit[]): Unit[] => us.flatMap((u) => (u.kind === 'package' ? all(u.units) : [u]));
+    for (const u of all(file.units)) if (u.kind === 'handler' && u.name) this.handlerTypes.set(u.name.name, u.handlerType);
+  }
 
   run(): LintDiagnostic[] {
     this.units(this.file.units, undefined);
@@ -83,6 +93,7 @@ class Linter {
     if (unit.name && dialect !== 'AM' && ['sequence', 'handler', 'subroutine'].includes(unit.kind)) this.nameLength(unit.name, unit.kind);
     this.declarations(unit, dialect, bound);
     this.duplicateDeclarations(unit.declarations);
+    if (dialect && dialect !== 'AM') this.localStorage(unit, dialect, bound);
 
     const routines: Routine[] = [];
     switch (unit.kind) {
@@ -93,6 +104,8 @@ class Linter {
           if (dialect !== 'AM') this.nameLength(p.name, 'phase');
           this.duplicate(phases, p.name, 'phase');
           if (p.alarm) this.expressions(p.alarm, unit, dialect, bound);
+          this.handlerRefs(p.handlers);
+          if (!p.routine.statements.length && !p.routine.steps.length) this.empty(p.name.range, 'PHASE');
         }
         routines.push(...unit.phases.map((p) => p.routine));
         this.declarationsBeforePhases(unit);
@@ -106,9 +119,15 @@ class Linter {
         if (unit.when) this.expressions(unit.when, unit, dialect, bound);
         if (dialect === 'AM') this.report(unit.headerRange, 'dialect', 'CL/AM has no abnormal condition handlers', Severity.Error);
         routines.push(unit.routine);
+        if (unit.restart && unit.handlerType === 'EMERGENCY') {
+          this.report(unit.restart.range, 'handler', 'An EMERGENCY handler cannot have a RESTART section (HP27-610 §4.4)', Severity.Error);
+        }
+        if (unit.restart) this.gotoAcrossRestart(unit.routine, unit.restart.routine);
+        if (!unit.routine.statements.length && !unit.routine.steps.length) this.empty(unit.headerRange, 'handler');
         break;
       case 'subroutine':
         routines.push(unit.routine);
+        if (!unit.routine.statements.length && !unit.routine.steps.length) this.empty(unit.headerRange, 'subroutine');
         for (const d of unit.declarations) {
           if (d.kind === 'external') this.report(d.range, 'external-in-subroutine', 'EXTERNAL is not allowed in a subroutine (HP27-610 §2.6)', Severity.Error);
         }
@@ -120,11 +139,17 @@ class Linter {
     const all = unit.kind === 'handler' && unit.restart ? [...routines, unit.restart.routine] : routines;
     for (const r of all) {
       if (unit.kind !== 'handler') steps.clear();
+      this.inRestart = unit.kind === 'handler' && r === unit.restart?.routine;
       this.routine(r, unit, dialect, bound, steps);
     }
+    this.inRestart = false;
   }
 
   private routine(r: Routine, unit: Unit, dialect: Dialect | undefined, bound: string | undefined, steps: Map<string, Ident>): void {
+    if (r.steps.length && r.statements.length && dialect !== 'AM') {
+      this.report(r.statements[0].range, 'structure', 'A routine with steps begins with a STEP heading (HP27-610 §4.1.2)', Severity.Error);
+    }
+    for (const st of r.steps) if (!st.statements.length && st.name) this.empty(st.name.range, 'STEP');
     const routineLabels = new Map<string, Ident>();
     this.statements(r.statements, unit, dialect, bound, routineLabels);
     if (r.statements.length > STEP_LIMIT) this.tooManyStatements(r.statements);
@@ -192,6 +217,30 @@ class Linter {
         if (!topLevel) this.report(s.range, 'loop-label', 'A LOOP cannot be part of another statement', Severity.Error);
         e(s.low);
         e(s.high);
+        this.loopCounter(s, dialect);
+        break;
+      case 'resume':
+        if (!this.inRestart && dialect !== 'AM') {
+          this.report(s.range, 'handler', 'RESUME is allowed only in the RESTART section of a handler (HP27-610 §3.2.17)', Severity.Error);
+        }
+        break;
+      case 'enb': {
+        const types = new Set<string>();
+        for (const h of s.handlers) {
+          if (types.has(h.type)) this.report(h.name.range, 'handler', `${h.type} appears twice in this ENB (HP27-610 §3.2.6)`, Severity.Error);
+          types.add(h.type);
+        }
+        this.handlerRefs(s.handlers);
+        break;
+      }
+      case 'initiate':
+        if (!s.target && s.handlerType && s.onError) {
+          this.report(s.onError.range, 'initiate', 'WHEN ERROR is not allowed on INITIATE of this program\'s own handler (HP27-610 §3.2.15.4)', Severity.Error);
+        }
+        if (s.target && bound && s.target.name === bound && !s.handlerType && dialect !== 'AM') {
+          this.report(s.target.range, 'initiate', `${s.target.text} is this program's own point: a sequence cannot INITIATE itself`, Severity.Error);
+        }
+        if (s.onError) nested(s.onError.statement);
         break;
       case 'call':
         s.args.forEach(e);
@@ -216,11 +265,19 @@ class Linter {
     }
   }
 
-  /** Every LOOP label should be the target of a REPEAT. */
+  /** Every LOOP label should be the target of a REPEAT, and of only one; a REPEAT targets a LOOP [HP27-610 §3.2.10]. */
   private loops(list: Statement[]): void {
     const repeated = new Set<string>();
     const collect = (s: Statement) => {
-      if (s.kind === 'repeat' && s.target) repeated.add(s.target.name);
+      if (s.kind === 'repeat' && s.target) {
+        const target = this.resolved.get(s.target);
+        if (target?.kind === 'label' && target.detail !== 'LOOP') {
+          this.report(s.target.range, 'repeat', `${s.target.text} does not label a LOOP (HP27-610 §3.2.10)`, Severity.Error);
+        } else if (target && repeated.has(s.target.name)) {
+          this.report(s.target.range, 'repeat', `Loop ${s.target.text} already has a REPEAT: a loop has only one (HP27-610 §3.2.10)`, Severity.Error);
+        }
+        repeated.add(s.target.name);
+      }
       if (s.kind === 'if') {
         s.branches.forEach((b) => b.body.forEach(collect));
         s.elseBody?.forEach(collect);
@@ -232,6 +289,55 @@ class Linter {
         this.report(s.label.range, 'loop-never-repeated', `Loop ${s.label.text} is never repeated: no REPEAT ${s.label.text} in this step`, Severity.Warning);
       }
     }
+  }
+
+  /** A loop counter is a scalar Number LOCAL or subroutine argument [HP27-610 §3.2.9.2]. */
+  private loopCounter(s: Extract<Statement, { kind: 'loop' }>, dialect: Dialect | undefined): void {
+    if (s.counter) {
+      const sym = this.resolved.get(s.counter);
+      const d = sym?.declaration;
+      const scalarNumber =
+        sym?.kind === 'argument' ||
+        (sym?.kind === 'local' && d?.kind === 'local' && !d.type?.array && d.type?.kind !== 'array' && d.type?.kind !== 'states' && (!d.type || d.type.name.name === 'NUMBER'));
+      // Without a heading the file is a fragment, included where the counter may be declared.
+      if (!sym) {
+        if (dialect) this.report(s.counter.range, 'loop-counter', `Loop counter ${s.counter.text} is not declared`, Severity.Error);
+      }
+      else if (!scalarNumber) {
+        this.report(s.counter.range, 'loop-counter', `Loop counter ${s.counter.text} must be a scalar Number LOCAL or subroutine argument (HP27-610 §3.2.9.2)`, Severity.Error);
+      }
+    }
+    const low = s.low && constantNumber(s.low);
+    const high = s.high && constantNumber(s.high);
+    if (low !== undefined && high !== undefined && low > high) {
+      this.report(s.high!.range, 'loop-range', `The loop counts up from ${low} and never reaches ${high}: decrementing loops are not supported (HP27-610 §3.2.9.3)`, Severity.Error);
+    }
+  }
+
+  /** Handlers named in an ENB statement or PHASE heading are of the type named with them. */
+  private handlerRefs(refs: HandlerRef[]): void {
+    for (const h of refs) {
+      const actual = this.handlerTypes.get(h.name.name);
+      if (actual && actual !== h.type) this.report(h.name.range, 'handler', `${h.name.text} is a ${actual} handler, not ${h.type}`, Severity.Error);
+    }
+  }
+
+  /** A GOTO STEP cannot cross a handler's RESTART heading [HP27-610 §4.4]. */
+  private gotoAcrossRestart(main: Routine, restart: Routine): void {
+    const names = (r: Routine) => new Set(r.steps.flatMap((st) => (st.name ? [st.name.name] : [])));
+    const check = (r: Routine, other: Set<string>) => {
+      eachStatement([...r.statements, ...r.steps.flatMap((st) => st.statements)], (s) => {
+        if (s.kind === 'goto' && s.targetKind === 'step' && s.target && other.has(s.target.name)) {
+          this.report(s.target.range, 'handler', `A GOTO cannot cross the RESTART heading to step ${s.target.text} (HP27-610 §4.4)`, Severity.Error);
+        }
+      });
+    };
+    check(main, names(restart));
+    check(restart, names(main));
+  }
+
+  private empty(range: Range, what: string): void {
+    this.report(range, 'structure', `This ${what} has no statements: it must contain executable statements`, Severity.Error);
   }
 
   private sendLength(s: Extract<Statement, { kind: 'send' }>): void {
@@ -360,6 +466,58 @@ class Linter {
       for (const n of d.names) {
         this.report(n.range, 'serial-iop', `${n.text} is mapped to a Serial Interface IOP parameter (${p.name}, ${p.fields.EXTDATA})`, Severity.Information);
       }
+    }
+  }
+
+  /**
+   * LOCAL ... AT rules [HP27-610 §2.6.2]: the location is NN, FL, TIME or STRn (NN or FL in
+   * CL/PM) at an integer index, of the variable's type; another point's variables follow its
+   * EXTERNAL; and one LOCAL names one variable.
+   */
+  private localStorage(unit: Unit, dialect: Dialect, bound: string | undefined): void {
+    for (const d of unit.declarations) {
+      if (d.kind !== 'local') continue;
+      const t = d.type;
+      if (t?.kind === 'states' && t.states.length !== 2) {
+        this.report(t.states[0].range, 'local-type', 'A LOCAL state list has exactly two states (HP27-610 §2.6.2.1)', Severity.Error);
+      }
+      const bounds = t?.array?.[0];
+      const range = bounds?.kind === 'binary' && bounds.op === '..' ? [constantNumber(bounds.left), constantNumber(bounds.right)] : undefined;
+      if (range && range[0] !== undefined && range[1] !== undefined && range[0] >= range[1]) {
+        this.report(bounds!.range, 'array-bounds', 'The lower bound must be less than the upper bound (HP27-610 §2.6.2.2)', Severity.Error);
+      }
+      const at = d.at;
+      if (!at) continue;
+      const param = at.param.name;
+      const family = /^STR(8|16|32|64)$/.test(param) ? 'STR' : param;
+      const allowed = dialect === 'PM' ? ['NN', 'FL'] : ['NN', 'FL', 'TIME', 'STR'];
+      if (!allowed.includes(family)) {
+        const list = dialect === 'PM' ? 'NN or FL' : 'NN, FL, TIME or STRn';
+        this.report(at.param.range, 'local-location', `A LOCAL maps to ${list}, not ${at.param.text} (HP27-610 Table 2-4)`, Severity.Error);
+        continue;
+      }
+      const expected = localFamily(t);
+      if (expected && expected !== family) {
+        this.report(at.param.range, 'local-type', `A ${typeWord(t)} LOCAL maps to ${expected === 'STR' ? 'STRn' : expected}, not ${at.param.text} (HP27-610 Table 2-4)`, Severity.Error);
+      }
+      const index = at.index && constantNumber(at.index);
+      if (at.index && (index === undefined || !Number.isInteger(index))) {
+        this.report(at.index.range, 'local-location', 'The location index must be an integer', Severity.Error);
+      }
+      if (at.point && at.point.name !== bound && unit.kind === 'sequence') this.externalFirst(unit, at.point, d.range);
+      if (d.names.length > 1) {
+        // Two LOCALs on one location are allowed (aliases); one LOCAL naming several variables is not.
+        this.report(d.names[1].range, 'local-location', `Only one variable per LOCAL ... AT: ${d.names.map((n) => n.text).join(', ')} would all be ${at.param.text}${at.index ? '(...)' : ''}`, Severity.Error);
+      }
+    }
+  }
+
+  /** LOCALs on another point follow the EXTERNAL that names it [HP27-610 §2.6.2.2]. */
+  private externalFirst(unit: Unit, point: Ident, local: Range): void {
+    const decl = unit.declarations.find((x) => x.kind === 'external' && x.names.some((n) => n.name === point.name));
+    if (!decl) this.report(point.range, 'external-order', `${point.text} is not declared EXTERNAL`, Severity.Error);
+    else if (decl.range.start.line > local.start.line) {
+      this.report(point.range, 'external-order', `The LOCAL must follow EXTERNAL ${point.text} (HP27-610 §2.6.2.2)`, Severity.Error);
     }
   }
 
@@ -495,4 +653,53 @@ function isAbsoluteTime(x: Expr): boolean {
     if (y.kind === 'name' && y.id.name === 'DATE_TIME') found = true;
   });
   return found;
+}
+
+/** The value of a numeric literal, possibly negated or parenthesized. */
+function constantNumber(x: Expr): number | undefined {
+  if (x.kind === 'number') return Number(x.value);
+  if (x.kind === 'paren') return constantNumber(x.inner);
+  if (x.kind === 'unary' && x.op === '-') {
+    const v = constantNumber(x.operand);
+    return v === undefined ? undefined : -v;
+  }
+  return undefined;
+}
+
+/** The storage a LOCAL's type maps to [HP27-610 Table 2-4]. */
+function localFamily(t: TypeSpec | undefined): string | undefined {
+  if (!t || t.kind === 'array') return 'NN';
+  if (t.kind === 'states') return 'FL';
+  switch (t.name.name) {
+    case 'NUMBER':
+      return 'NN';
+    case 'LOGICAL':
+    case 'FLAG':
+      return 'FL';
+    case 'TIME':
+      return 'TIME';
+    case 'STRING':
+      return 'STR';
+  }
+  return undefined;
+}
+
+function typeWord(t: TypeSpec | undefined): string {
+  if (!t || t.kind === 'array') return 'NUMBER';
+  return t.kind === 'states' ? 'state list' : t.name.text.toUpperCase();
+}
+
+/** Visit statements and the statements nested in them. */
+function eachStatement(list: Statement[], f: (s: Statement) => void): void {
+  for (const s of list) {
+    f(s);
+    if (s.kind === 'if') {
+      for (const b of s.branches) {
+        eachStatement(b.body, f);
+        if (b.onError) eachStatement([b.onError.statement], f);
+      }
+      if (s.elseBody) eachStatement(s.elseBody, f);
+    } else if ('onError' in s && s.onError) eachStatement([s.onError.statement], f);
+    if (s.kind === 'wait' && s.timeout) eachStatement([s.timeout.statement], f);
+  }
 }

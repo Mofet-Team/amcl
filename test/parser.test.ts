@@ -117,3 +117,22 @@ describe('parser: errors', () => {
     expect(file.units).toHaveLength(1);
   });
 });
+
+describe('parser: PHASE headings and RESTART sections', () => {
+  const heading = (src: string) => parse(src).diagnostics.filter((d) => d.code === 'heading').map((d) => d.message);
+
+  it('reports clauses a PHASE heading may have once, and KEEPENB with handlers', () => {
+    expect(heading('SEQUENCE S (HPM; POINT S)\nPHASE P (ALARM 1 MINS; ALARM 2 MINS)\nEXIT\nEND S')).toEqual(['A PHASE heading has one ALARM clause']);
+    expect(heading('SEQUENCE S (HPM; POINT S)\nPHASE P (HOLD A; HOLD B)\nEXIT\nEND S')).toEqual(['HOLD appears twice in this PHASE heading (HP27-610 §4.1.4.2)']);
+    expect(heading('SEQUENCE S (HPM; POINT S)\nPHASE P (KEEPENB; HOLD A)\nEXIT\nEND S')).toEqual([
+      'A PHASE heading names handlers or KEEPENB, not both (HP27-610 §4.1.4.2)',
+    ]);
+  });
+
+  it('reports a second RESTART and keeps its statements', () => {
+    const { file, diagnostics } = parse('HOLD HANDLER H\nEXIT\nRESTART\nPAUSE\nRESTART\nFAIL\nEND H');
+    expect(diagnostics.map((d) => d.message)).toEqual(['A handler has one RESTART section']);
+    const h = file.units[0] as Extract<Unit, { kind: 'handler' }>;
+    expect(h.restart?.routine.statements.map((s) => s.kind)).toEqual(['pause', 'fail']);
+  });
+});
