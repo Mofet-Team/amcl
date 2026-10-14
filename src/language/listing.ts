@@ -49,7 +49,33 @@ export interface Listing {
   mainSource?: string;
 }
 
-const NUMBERED = /^( {0,5}\d{1,6})( {0,5}\d{1,6}| {6}) {2}(.*)$/;
+/**
+ * Line number, object location and source text. Current compilers print the location in 6
+ * columns; the CL/AM compiler of the early 1990s in fixed columns of 6 and 8, with `.60` on a
+ * %PAGE line. An empty source line may be printed as its number alone.
+ */
+const LAYOUTS = [/^( {0,5}\d{1,6})( {0,5}[\d.]{1,6}| {6}) {2}(.*)$/, /^( {0,5}\d{1,6})(?<=^.{6})([ \d.]{8}) {2}(.*)$/];
+const NUMBER_ONLY = /^( {0,5}\d{1,6})\s*$/;
+
+/** The source lines a layout finds: numbered lines, each one more than the last. */
+function numberedLines(lines: string[], layout: RegExp): Map<number, { number: number; text: string }> {
+  const out = new Map<number, { number: number; text: string }>();
+  let last = 0;
+  lines.forEach((raw, i) => {
+    const m = layout.exec(raw);
+    if (m && Number(m[1]) > last) {
+      out.set(i, { number: Number(m[1]), text: m[3] });
+      last = Number(m[1]);
+    } else {
+      const n = NUMBER_ONLY.exec(raw);
+      if (n && Number(n[1]) === last + 1) {
+        out.set(i, { number: last + 1, text: '' });
+        last++;
+      }
+    }
+  });
+  return out;
+}
 const CARETS = /^\s+\^[\s^]*$/;
 const MESSAGE = /^\s*\*\*\s*([A-Z]+)\s*\*\*\s*(.*?)\s*$/;
 const HEADER = /^\s*(CL V\d|Line\s+Loc\b|\f)/;
@@ -72,7 +98,12 @@ function severityOf(kind: string, catalog: CompilerMessage | undefined): Severit
 
 export function parseListing(text: string): Listing {
   const lines = text.split(/\r?\n|\r/);
-  const numbered = lines.some((l) => NUMBERED.test(l));
+  // The layout that numbers more lines in sequence; on a tie, the one the header's Text column
+  // (`  Line     Loc  Text`) belongs to.
+  const textColumn = lines.find((l) => /^\s*Line\s+Loc\s+Text/.test(l))?.indexOf('Text') ?? 0;
+  const [narrow, wide] = LAYOUTS.map((l) => numberedLines(lines, l));
+  const byLine = wide.size > narrow.size || (wide.size === narrow.size && textColumn >= 16) ? wide : narrow;
+  const numbered = byLine.size > 0;
   const source: ListedLine[] = [];
   const messages: ListingMessage[] = [];
   let context: ListedLine | undefined;
@@ -110,10 +141,9 @@ export function parseListing(text: string): Listing {
       return;
     }
     if (numbered) {
-      const m = NUMBERED.exec(raw);
-      const last = source[source.length - 1]?.number ?? 0;
-      if (m && Number(m[1]) > last) {
-        context = { listingLine: i, raw, number: Number(m[1]), text: m[3] };
+      const n = byLine.get(i);
+      if (n) {
+        context = { listingLine: i, raw, number: n.number, text: n.text };
         source.push(context);
         carets = [];
       }

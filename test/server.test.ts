@@ -204,6 +204,38 @@ describe.skipIf(!fs.existsSync(serverPath))('language server: compiler listings'
     expect(hover.contents.value).toMatch(/pass 2/);
   });
 
+  it('navigates a whole listing like its source: outline, hover, definition, highlights', async () => {
+    const uri = uriOf('HEATER.LS');
+    client.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'cl-listing', version: 1, text: fixture('listing/HEATER.LS') } });
+    const symbols = await client.request('textDocument/documentSymbol', { textDocument: { uri } });
+    expect(symbols.map((s: any) => s.name)).toEqual(['HEATER', 'Warnings (1)', 'Notes (1)']);
+    // The sequence spans listing lines 3 (SEQUENCE) to 15 (END); its phase RUN is on line 10.
+    expect(symbols[0].range.start.line).toBe(3);
+    const phase = JSON.stringify(symbols[0]).includes('"RUN"');
+    expect(phase).toBe(true);
+    // Line 14 is `     6      12      SET TEMP = TIC1.PV`; TEMP starts at column 14 + 8.
+    const def = await client.request('textDocument/definition', { textDocument: { uri }, position: { line: 14, character: 23 } });
+    expect(def).toEqual([{ uri, range: { start: { line: 9, character: 24 }, end: { line: 9, character: 28 } } }]);
+    const hover = await client.request('textDocument/hover', { textDocument: { uri }, position: { line: 14, character: 23 } });
+    expect(hover.contents.value).toMatch(/NN\(1\)/);
+    expect(hover.range.start).toEqual({ line: 14, character: 22 });
+    const highlights = await client.request('textDocument/documentHighlight', { textDocument: { uri }, position: { line: 14, character: 23 } });
+    expect(highlights.map((h: any) => h.range.start.line)).toEqual([9, 14]);
+    // A message line still explains the message.
+    const note = await client.request('textDocument/hover', { textDocument: { uri }, position: { line: 12, character: 4 } });
+    expect(note.contents.value).toMatch(/pass 2/);
+  });
+
+  it('serves hovers and definitions in an error listing from its source file', async () => {
+    const uri = uriOf('VALVE.LE');
+    // Line 2 is `     4            SET XV2.OP =`: XV2 is at column 14 + 8.
+    const def = await client.request('textDocument/definition', { textDocument: { uri }, position: { line: 2, character: 23 } });
+    expect(def).toEqual([{ uri: uriOf('VALVE.CL'), range: { start: { line: 1, character: 13 }, end: { line: 1, character: 16 } } }]);
+    // OP is at column 14 + 12; without a point database its hover is the parameter's description.
+    const hover = await client.request('textDocument/hover', { textDocument: { uri }, position: { line: 2, character: 27 } });
+    expect(hover.contents.value).toMatch(/OP/);
+  });
+
   it('adds listing messages to an open source, without repeating its own warnings', async () => {
     const uri = uriOf('HEATER.CL');
     client.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'cl', version: 1, text: fixture('listing/HEATER.CL') } });

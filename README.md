@@ -103,7 +103,11 @@ parameter lists and enumerations.
     exists.
   - In an open listing: squiggles at the compiler's carets, an outline of the messages by
     severity, a hover that names the compiler pass and severity of each of the ~400 compiler
-    messages, and **Go to Definition** from a listing line to that line in the source.
+    messages, and **Go to Definition** from a message to its line in the source.
+  - A listing navigates like its source: hovers on tags, points and LOCALs, Go to Definition,
+    references, highlights, folding, and the program's units, phases and steps in the outline.
+    An `.LS` holds the whole compiled source, so this works on the listing itself; an `.LE` holds
+    only the lines with errors, so it works through the source file beside it.
   - Notes, such as "All enabled abnormal handlers are disabled", are hints: dots in the editor
     with the message on hover, not entries in the Problems panel.
   - Codes `compiler-error`, `compiler-warning`, `compiler-note` and `compiler-stale`. Compiler

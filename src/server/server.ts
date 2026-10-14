@@ -1,5 +1,7 @@
 import {
   createConnection,
+  DocumentSymbol,
+  FoldingRange,
   Diagnostic,
   DiagnosticSeverity,
   DiagnosticTag,
@@ -31,6 +33,7 @@ import { definition, documentHighlights, references } from './features/navigatio
 import { documentSymbols } from './features/outline';
 import { decoderFor, findFiles, pathToUri, readText, resolvePaths, uriToPath } from './loader';
 import { compilerDiagnostics, LISTING_FILE, ListingStore } from './listings';
+import { isWhole, ListingView, sourceView, wholeView } from './listingView';
 import { Listing, parseListing, placeMessages } from '../language/listing';
 import { Severity } from '../language/types';
 
@@ -97,6 +100,49 @@ function listingOf(doc: TextDocument): Listing {
   const listing = parseListing(doc.getText());
   listingCache.set(doc.uri, { version: doc.version, listing });
   return listing;
+}
+
+const viewCache = new Map<string, { version: number; sourceText?: string; view: ListingView }>();
+
+/** The CL source behind an open listing, for hovers and navigation in it. */
+function viewOf(doc: TextDocument): ListingView | undefined {
+  const listing = listingOf(doc);
+  const hit = viewCache.get(doc.uri);
+  if (isWhole(listing) && hit && hit.version === doc.version) return hit.view;
+  const p = uriToPath(doc.uri);
+  const source = p && listings.sourceOf(p);
+  const lines = source ? linesOf(source) : undefined;
+  if (isWhole(listing)) {
+    const view = wholeView(doc.uri, listing, (t) => analyzeText(doc.uri, t), lines);
+    viewCache.set(doc.uri, { version: doc.version, view });
+    return view;
+  }
+  // An error listing with only some lines: work on the source file beside it.
+  if (!source || !lines) return undefined;
+  const text = lines.join('\n');
+  if (hit && hit.version === doc.version && hit.sourceText === text) return hit.view;
+  const view = sourceView(listing, pathToUri(source), lines, (t) => analyzeText(source, t));
+  viewCache.set(doc.uri, { version: doc.version, sourceText: text, view });
+  return view;
+}
+
+/** Locations found in a listing's view, moved back into the listing when they are in it. */
+function fromView(doc: TextDocument, view: ListingView, locations: Location[]): Location[] {
+  if (!view.whole) return locations;
+  return locations.flatMap((l) => {
+    if (l.uri !== view.uri) return [l];
+    const range = view.toListing(l.range);
+    return range ? [{ uri: doc.uri, range }] : [];
+  });
+}
+
+function symbolsFromView(view: ListingView, symbols: DocumentSymbol[]): DocumentSymbol[] {
+  return symbols.flatMap((s) => {
+    const range = view.toListing(s.range);
+    const selectionRange = view.toListing(s.selectionRange);
+    if (!range || !selectionRange) return [];
+    return [{ ...s, range, selectionRange, children: s.children && symbolsFromView(view, s.children) }];
+  });
 }
 
 /** The lines of a file: the open document's, else the saved file's. */
@@ -319,6 +365,7 @@ documents.onDidClose(({ document }) => {
   pending.delete(document.uri);
   cache.delete(document.uri);
   listingCache.delete(document.uri);
+  viewCache.delete(document.uri);
   void connection.sendDiagnostics({ uri: document.uri, diagnostics: [] });
   if (isListing(document)) return;
   // Fall back to the saved file, which may differ from the discarded edits.
@@ -333,7 +380,13 @@ documents.onDidClose(({ document }) => {
 
 connection.onDocumentSymbol(({ textDocument }) => {
   const doc = documents.get(textDocument.uri);
-  if (doc && isListing(doc)) return listingSymbols(listingOf(doc));
+  if (doc && isListing(doc)) {
+    const view = viewOf(doc);
+    const messages = listingSymbols(listingOf(doc));
+    if (!view?.whole) return messages;
+    const a = view.analysis;
+    return [...symbolsFromView(view, documentSymbols(a.binding.symbols, a.file.units, unusedSymbols(a.binding))), ...messages];
+  }
   return withDoc(textDocument.uri, [], (_, a) => documentSymbols(a.binding.symbols, a.file.units, unusedSymbols(a.binding)));
 });
 
@@ -356,28 +409,73 @@ function listingDefinition(doc: TextDocument, line: number): Location | undefine
 
 connection.onWorkspaceSymbol(({ query }) => workspaceSymbols(index, query));
 
-connection.onFoldingRanges(({ textDocument }) => withDoc(textDocument.uri, [], (_, a) => foldingRanges(a.file)));
+connection.onFoldingRanges(({ textDocument }) => {
+  const doc = documents.get(textDocument.uri);
+  if (doc && isListing(doc)) {
+    const view = viewOf(doc);
+    if (!view?.whole) return [];
+    return foldingRanges(view.analysis.file).flatMap((f): FoldingRange[] => {
+      const start = view.toListing({ start: { line: f.startLine, character: 0 }, end: { line: f.startLine, character: 0 } });
+      const end = view.toListing({ start: { line: f.endLine, character: 0 }, end: { line: f.endLine, character: 0 } });
+      return start && end ? [{ ...f, startLine: start.start.line, endLine: end.start.line }] : [];
+    });
+  }
+  return withDoc(textDocument.uri, [], (_, a) => foldingRanges(a.file));
+});
 
 connection.onDefinition(({ textDocument, position }) => {
   const doc = documents.get(textDocument.uri);
-  if (doc && isListing(doc)) return listingDefinition(doc, position.line);
+  if (doc && isListing(doc)) {
+    // On a message line: its source line. On a name: its definition. Elsewhere: the source line.
+    const onMessage = listingOf(doc).messages.some((m) => m.listingLine === position.line);
+    const view = onMessage ? undefined : viewOf(doc);
+    const at = view?.toSource(position);
+    if (view && at) {
+      // The listing's own definition first: the same LOCAL is also in the source file.
+      const local = definition(view.analysis.binding, view.uri, at);
+      const found = fromView(doc, view, local ? [local] : crossDefinition(targetAt(view.analysis, view.summary, index, at), index, view.analysis, at));
+      if (found.length) return found;
+    }
+    return listingDefinition(doc, position.line);
+  }
   return withDoc<Location | Location[] | undefined>(textDocument.uri, undefined, (doc, a, s) => {
     const cross = crossDefinition(targetAt(a, s, index, position), index, a, position);
     return cross.length ? cross : definition(a.binding, doc.uri, position);
   });
 });
 
-connection.onReferences(({ textDocument, position, context }) =>
-  withDoc(textDocument.uri, [], (doc, a, s) => {
+connection.onReferences(({ textDocument, position, context }) => {
+  const listingDoc = documents.get(textDocument.uri);
+  if (listingDoc && isListing(listingDoc)) {
+    const view = viewOf(listingDoc);
+    const at = view?.toSource(position);
+    if (!view || !at) return [];
+    const target = targetAt(view.analysis, view.summary, index, at);
+    const found = target
+      ? crossReferences(target, index, context.includeDeclaration)
+      : references(view.analysis.binding, view.uri, at, context.includeDeclaration);
+    return fromView(listingDoc, view, found);
+  }
+  return withDoc(textDocument.uri, [], (doc, a, s) => {
     const target = targetAt(a, s, index, position);
     const cross = crossReferences(target, index, context.includeDeclaration);
     return target ? cross : references(a.binding, doc.uri, position, context.includeDeclaration);
-  }),
-);
+  });
+});
 
 connection.onHover(({ textDocument, position }) => {
   const doc = documents.get(textDocument.uri);
-  if (doc && isListing(doc)) return listingHover(listingOf(doc), position) ?? null;
+  if (doc && isListing(doc)) {
+    const message = listingHover(listingOf(doc), position);
+    if (message) return message;
+    const view = viewOf(doc);
+    const at = view?.toSource(position);
+    if (!view || !at) return null;
+    const h = hover({ uri: view.uri, analysis: view.analysis, summary: view.summary, index, lines: view.lines, display }, at);
+    if (!h) return null;
+    const range = h.range && (view.whole ? view.toListing(h.range) : undefined);
+    return { contents: h.contents, range };
+  }
   return withDoc(textDocument.uri, null, (doc, analysis, summary) =>
     hover({ uri: doc.uri, analysis, summary, index, lines: doc.getText().split(/\r?\n|\r/), display }, position) ?? null,
   );
@@ -402,9 +500,19 @@ function display(uri: string): string {
   return root ? path.relative(root, p) : path.join(path.basename(path.dirname(p)), path.basename(p));
 }
 
-connection.onDocumentHighlight(({ textDocument, position }) =>
-  withDoc(textDocument.uri, [], (_, a) => documentHighlights(a.binding, position)),
-);
+connection.onDocumentHighlight(({ textDocument, position }) => {
+  const doc = documents.get(textDocument.uri);
+  if (doc && isListing(doc)) {
+    const view = viewOf(doc);
+    const at = view?.whole ? view.toSource(position) : undefined;
+    if (!view || !at) return [];
+    return documentHighlights(view.analysis.binding, at).flatMap((h) => {
+      const range = view.toListing(h.range);
+      return range ? [{ ...h, range }] : [];
+    });
+  }
+  return withDoc(textDocument.uri, [], (_, a) => documentHighlights(a.binding, position));
+});
 
 documents.listen(connection);
 connection.listen();

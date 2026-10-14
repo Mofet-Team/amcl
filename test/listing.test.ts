@@ -180,3 +180,48 @@ describe('ListingStore', () => {
     expect(store.sourceOf(path.join(dir, 'pump.le'))).toBe(path.join(dir, 'PUMP.CL'));
   });
 });
+
+describe('listing layouts', () => {
+  it('reads empty source lines printed as their number alone', () => {
+    const l = parseListing(['Line   Loc  Text', '1        -- header', '2', '3        SEQUENCE S (HPM; POINT S)'].join('\r\n'));
+    expect(l.source.map((s) => [s.number, s.text])).toEqual([
+      [1, '-- header'],
+      [2, ''],
+      [3, 'SEQUENCE S (HPM; POINT S)'],
+    ]);
+  });
+
+  it('reads the fixed columns of old CL/AM listings', () => {
+    const l = parseListing(
+      ['  Line     Loc  Text', '     1      18  BLOCK B (POINT P; AT GENERAL)', '     2          %INCLUDE_SET FILE', '     3  .60     %PAGE----', '    10    1014    SET X = 1'].join('\n'),
+    );
+    expect(l.source.map((s) => [s.number, s.text])).toEqual([
+      [1, 'BLOCK B (POINT P; AT GENERAL)'],
+      [2, '%INCLUDE_SET FILE'],
+      [3, '%PAGE----'],
+      [10, '  SET X = 1'],
+    ]);
+  });
+});
+
+describe('listing views', () => {
+  it('maps positions between a whole listing and its source column', async () => {
+    const { wholeView } = await import('../src/server/listingView');
+    const { analyze } = await import('../src/language/analyze');
+    const v = wholeView('file:///x.LS', heaterLs, analyze);
+    expect(v.toSource({ line: 14, character: 22 })).toEqual({ line: 5, character: 8 });
+    expect(v.toListing({ start: { line: 3, character: 10 }, end: { line: 3, character: 14 } })).toEqual({
+      start: { line: 9, character: 24 },
+      end: { line: 9, character: 28 },
+    });
+  });
+
+  it('takes a line the listing cut at its page width from the source file', async () => {
+    const { wholeView } = await import('../src/server/listingView');
+    const { analyze } = await import('../src/language/analyze');
+    const cut = parseListing(['     1            SEQUENCE S (HPM; POINT S)', '     2            PHASE P', '     3            SET NN(1) = 1 +', '     4            END S'].join('\n'));
+    const v = wholeView('file:///x.LS', cut, analyze, ['    SEQUENCE S (HPM; POINT S)', '    PHASE P', '    SET NN(1) = 1 + 2', '    END S']);
+    expect(v.lines[2]).toBe('    SET NN(1) = 1 + 2');
+    expect(v.analysis.diagnostics.filter((d) => d.severity === 1)).toEqual([]);
+  });
+});
