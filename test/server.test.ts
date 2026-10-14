@@ -256,3 +256,35 @@ describe.skipIf(!fs.existsSync(serverPath))('language server: compiler listings'
     expect(d.filter((x: any) => x.code === 'unused')).toHaveLength(1);
   });
 });
+
+describe.skipIf(!fs.existsSync(serverPath))('language server: formatting', () => {
+  let proc: ChildProcess;
+  let client: Client;
+  const uri = pathToFileURL(path.join(__dirname, 'fixtures', 'format', 'F.CL')).toString();
+
+  beforeAll(async () => {
+    proc = spawn(process.execPath, [serverPath, '--stdio']);
+    client = new Client(proc);
+    await client.request('initialize', { processId: null, rootUri: null, capabilities: {} });
+    client.notify('initialized', {});
+    client.notify('textDocument/didOpen', {
+      textDocument: { uri, languageId: 'cl', version: 1, text: 'SEQUENCE F (HPM; POINT F)\nPHASE P\n    SET A=1\n set B=2\nEND F' },
+    });
+  });
+
+  afterAll(() => proc?.kill());
+
+  it('formats with the rules of the nearest .clformat.json', async () => {
+    const edits = await client.request('textDocument/formatting', { textDocument: { uri }, options: { tabSize: 4, insertSpaces: true } });
+    expect(edits.map((e: any) => [e.range.start.line, e.newText])).toEqual([
+      [2, '  SET A=1'],
+      [3, '  SET B=2'],
+    ]);
+  });
+
+  it('formats a selection', async () => {
+    const range = { start: { line: 3, character: 0 }, end: { line: 4, character: 0 } };
+    const edits = await client.request('textDocument/rangeFormatting', { textDocument: { uri }, range, options: { tabSize: 4, insertSpaces: true } });
+    expect(edits.map((e: any) => [e.range.start.line, e.newText])).toEqual([[3, '  SET B=2']]);
+  });
+});

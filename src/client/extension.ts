@@ -1,5 +1,6 @@
 import * as path from 'path';
-import { ExtensionContext, workspace } from 'vscode';
+import * as fs from 'fs';
+import { commands, ExtensionContext, Uri, window, workspace } from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
 let client: LanguageClient | undefined;
@@ -34,7 +35,26 @@ export async function activate(context: ExtensionContext): Promise<void> {
       }
     }),
   );
+  context.subscriptions.push(commands.registerCommand('amcl.createFormatRules', createFormatRules));
   await client.start();
+}
+
+/** Write a .clformat.json beside the active CL file, with the columns that file uses. */
+async function createFormatRules(): Promise<void> {
+  const editor = window.activeTextEditor;
+  if (!editor || editor.document.languageId !== 'cl' || !client) {
+    void window.showInformationMessage('Open a CL file to take its formatting rules from.');
+    return;
+  }
+  const target = Uri.joinPath(Uri.file(path.dirname(editor.document.uri.fsPath)), '.clformat.json');
+  if (fs.existsSync(target.fsPath)) {
+    const answer = await window.showWarningMessage(`${target.fsPath} exists. Replace it?`, { modal: true }, 'Replace');
+    if (answer !== 'Replace') return;
+  }
+  const columns = await client.sendRequest('amcl/learnFormat', { uri: editor.document.uri.toString() });
+  const rules = { columns, trimTrailingSpaces: true, uppercaseKeywords: true, maxLineLength: 132 };
+  fs.writeFileSync(target.fsPath, JSON.stringify(rules, null, 2) + '\n');
+  await window.showTextDocument(target);
 }
 
 export async function deactivate(): Promise<void> {

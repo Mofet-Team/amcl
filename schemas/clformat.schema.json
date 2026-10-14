@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CL formatting rules",
+  "description": "Formatting rules for Honeywell CL sources in this folder and below. The nearest .clformat.json above a file applies. Anything not set here is learned from the file being formatted.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Column (0 = first) where each kind of line starts. A kind not given keeps the column the file uses most for it.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unit": { "type": "integer", "minimum": 0, "description": "SEQUENCE, SUBROUTINE, handler, BLOCK and PACKAGE headings." },
+        "phase": { "type": "integer", "minimum": 0, "description": "PHASE headings." },
+        "step": { "type": "integer", "minimum": 0, "description": "STEP headings." },
+        "restart": { "type": "integer", "minimum": 0, "description": "RESTART headings." },
+        "declaration": { "type": "integer", "minimum": 0, "description": "LOCAL, EXTERNAL, PARAMETER and DEFINE." },
+        "statement": { "type": "integer", "minimum": 0, "description": "Statements without a label." },
+        "label": { "type": "integer", "minimum": 0, "description": "Statements with a label: where the label starts." },
+        "else": { "type": "integer", "minimum": 0, "description": "ELSE lines. Defaults to the statement column." },
+        "end": { "type": "integer", "minimum": 0, "description": "END lines." }
+      }
+    },
+    "trimTrailingSpaces": { "type": "boolean", "default": true, "description": "Remove spaces at the ends of lines." },
+    "uppercaseKeywords": { "type": "boolean", "default": true, "description": "Write keywords such as SET, IF and THEN in capitals. Names are left as written." },
+    "maxLineLength": { "type": "integer", "minimum": 40, "default": 132, "description": "Re-indenting never takes a line past this column. The compiler reads 132." }
+  }
+}

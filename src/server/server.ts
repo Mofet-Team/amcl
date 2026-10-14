@@ -36,6 +36,7 @@ import { compilerDiagnostics, LISTING_FILE, ListingStore } from './listings';
 import { isWhole, ListingView, sourceView, wholeView } from './listingView';
 import { Listing, parseListing, placeMessages } from '../language/listing';
 import { Severity } from '../language/types';
+import { FormatOptions, formatCl, learnColumns } from '../language/format';
 
 /** Settings under `amcl.*`, plus the encoding VS Code uses for CL files. */
 interface Settings {
@@ -241,6 +242,8 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       definitionProvider: true,
       referencesProvider: true,
       documentHighlightProvider: true,
+      documentFormattingProvider: true,
+      documentRangeFormattingProvider: true,
       hoverProvider: true,
       completionProvider: { triggerCharacters: ['.'] },
       signatureHelpProvider: { triggerCharacters: ['(', ','], retriggerCharacters: [';'] },
@@ -518,6 +521,47 @@ connection.onDocumentHighlight(({ textDocument, position }) => {
     });
   }
   return withDoc(textDocument.uri, [], (_, a) => documentHighlights(a.binding, position));
+});
+
+// ------------------------------------------------------------------ formatting
+
+/** The nearest .clformat.json above a file, if any. */
+function formatRules(uri: string): FormatOptions {
+  const p = uriToPath(uri);
+  const defaults: FormatOptions = { maxLineLength: settings.lineLength || COMPILER_COLUMNS };
+  if (!p) return defaults;
+  for (let dir = path.dirname(p); ; dir = path.dirname(dir)) {
+    const file = path.join(dir, '.clformat.json');
+    if (fs.existsSync(file)) {
+      try {
+        return { ...defaults, ...(JSON.parse(fs.readFileSync(file, 'utf8')) as FormatOptions) };
+      } catch (err) {
+        void connection.window.showWarningMessage(`amcl: ${file} is not valid JSON: ${(err as Error).message}`);
+        return defaults;
+      }
+    }
+    if (path.dirname(dir) === dir) return defaults;
+  }
+}
+
+connection.onDocumentFormatting(({ textDocument }) => {
+  const doc = documents.get(textDocument.uri);
+  if (!doc || isListing(doc)) return [];
+  return formatCl(doc.getText(), formatRules(doc.uri));
+});
+
+connection.onDocumentRangeFormatting(({ textDocument, range }) => {
+  const doc = documents.get(textDocument.uri);
+  if (!doc || isListing(doc)) return [];
+  // A selection that ends at the start of a line does not include that line.
+  const last = range.end.character === 0 && range.end.line > range.start.line ? range.end.line - 1 : range.end.line;
+  return formatCl(doc.getText(), formatRules(doc.uri), range.start.line, last);
+});
+
+/** The columns a file uses, for the client to write into a new .clformat.json. */
+connection.onRequest('amcl/learnFormat', ({ uri }: { uri: string }) => {
+  const doc = documents.get(uri);
+  return doc ? learnColumns(doc.getText()) : {};
 });
 
 documents.listen(connection);

@@ -3,6 +3,7 @@
 !dist/server.js
 !syntaxes/**
 !snippets/**
+!schemas/**
 !language-configuration.json
 !listing-configuration.json
 !icon.png

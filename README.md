@@ -115,6 +115,25 @@ parameter lists and enumerations.
     with the message on hover, not entries in the Problems panel.
   - Codes `compiler-error`, `compiler-warning`, `compiler-note` and `compiler-stale`. Compiler
     warnings the extension reports itself (unused names, for example) are shown once.
+- Formatting, only on request (**Format Document**, Shift+Alt+F, or **Format Selection**), in
+  the file's own style: each kind of line (unit headings, PHASE, STEP, declarations, statements,
+  labels, ELSE, END) goes to the column the file uses most for it, and continuation lines move
+  with their statement. Trailing spaces go and keywords are capitalized. Comments, strings,
+  column-1 `&` and `%`, and alignment within a line stay as they are; no line is moved past
+  column 132, and a result that would lex differently is not applied.
+
+  Rules for a folder go in a `.clformat.json`; the nearest one above a file applies, and what it
+  does not set is learned from the file. **CL: Create Formatting Rules from This File** writes
+  one with the columns of the open file:
+
+  ```json
+  {
+    "columns": { "unit": 4, "phase": 4, "step": 0, "declaration": 4, "statement": 4, "label": 0, "end": 4 },
+    "trimTrailingSpaces": true,
+    "uppercaseKeywords": true,
+    "maxLineLength": 132
+  }
+  ```
 - Snippets, comment toggling, bracket matching
 
 ## Requirements
@@ -190,6 +209,11 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
+### Unreleased
+
+- Formatting in each file's own style, with rules from `.clformat.json`.
+- Listings opened on their own start the extension.
+
 ### 0.5.0
 
 - Compiler errors caught while editing, checked against sources that compiled: LOCAL locations
