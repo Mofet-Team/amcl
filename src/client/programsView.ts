@@ -2,8 +2,6 @@ import {
   Event,
   EventEmitter,
   MarkdownString,
-  Position,
-  Range,
   ThemeColor,
   ThemeIcon,
   TreeDataProvider,
@@ -13,6 +11,7 @@ import {
   workspace,
 } from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
+import { openEntryCommand } from './openEntry';
 import {
   PROGRAM_PARTS_REQUEST,
   PROGRAM_STATUS_REQUEST,
@@ -114,7 +113,7 @@ export class ProgramsView implements TreeDataProvider<Node> {
         const item = new TreeItem(p.name, p.children?.length ? TreeItemCollapsibleState.Collapsed : TreeItemCollapsibleState.None);
         item.iconPath = new ThemeIcon(PART_ICON[p.kind]);
         item.description = p.detail ?? p.kind.toUpperCase();
-        item.command = open(node.uri, p.line, p.character);
+        item.command = openEntryCommand({ uri: node.uri, kind: p.kind, name: p.name, line: p.line, character: p.character });
         return item;
       }
     }
@@ -138,15 +137,10 @@ export class ProgramsView implements TreeDataProvider<Node> {
     else if (status?.changed) lines.push('', 'The source differs from its listing: changed since the last compile.');
     else if (status?.noListing) lines.push('', 'No listing beside it.');
     item.tooltip = new MarkdownString(lines.join('\n'));
-    item.command = open(p.uri, p.line, p.character);
+    item.command = openEntryCommand({ uri: p.uri, kind: p.kind, name: p.name, line: p.line, character: p.character });
     item.contextValue = 'program';
     return item;
   }
-}
-
-function open(uri: string, line: number, character: number) {
-  const at = new Position(line, character);
-  return { command: 'vscode.open', title: 'Open', arguments: [Uri.parse(uri), { selection: new Range(at, at) }] };
 }
 
 function groupBy<T>(items: T[], key: (t: T) => string): Map<string, T[]> {

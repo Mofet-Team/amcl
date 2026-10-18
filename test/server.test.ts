@@ -178,6 +178,22 @@ describe.skipIf(!fs.existsSync(serverPath))('language server: workspace index', 
     expect(changed).toBe(true);
   });
 
+  it('finds view entries where they are now, and does not refresh the views for plain typing', async () => {
+    const notices = () => client.notifications.filter((n) => n.method === 'amcl/programsChanged').length;
+    await until(async () => notices(), (n) => n > 0);
+    const before = notices();
+    // A comment changes nothing the views show.
+    client.notify('textDocument/didChange', { textDocument: { uri: mixerUri, version: 2 }, contentChanges: [{ text: `-- note\n${mixer}` }] });
+    await new Promise((r) => setTimeout(r, 2000));
+    expect(notices()).toBe(before);
+    // Its phase moved down a line; the view's click finds it there.
+    expect(await client.request('amcl/locate', { uri: mixerUri, kind: 'phase', name: 'RUN' })).toEqual({ line: 6, character: 4 });
+    expect(await client.request('amcl/locate', { uri: mixerUri, kind: 'local', name: 'AGITATE' })).toEqual({ line: 3, character: 10 });
+    // A new phase does change the view.
+    client.notify('textDocument/didChange', { textDocument: { uri: mixerUri, version: 3 }, contentChanges: [{ text: mixer.replace('    END MIXER', '    PHASE MORE\n    EXIT\n    END MIXER') }] });
+    await until(async () => notices(), (n) => n > before);
+  });
+
   it('answers workspace symbol queries', async () => {
     const syms = await client.request('workspace/symbol', { query: 'TANK' });
     expect(syms.map((s: any) => s.name)).toEqual(['TANK_LVL']);

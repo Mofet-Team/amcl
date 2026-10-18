@@ -2,7 +2,7 @@ import { placeMessages } from '../language/listing';
 import { FileSummary } from '../language/summary';
 import { WorkspaceIndex } from '../language/workspace';
 import { ProgramItem, ProgramPart, ProgramStatus, StorageAccess, StorageSlot } from '../shared/programs';
-import { ListingFile } from './listings';
+import { compiledSource, ListingFile } from './listings';
 
 /** The LCN and HPM label of a box key (`net/ucn:node`, or `G…` for a group the database does not place). */
 export function placeBox(box: string | undefined): { lcn?: string; hpm: string; hpmOrder: string } {
@@ -51,8 +51,11 @@ export function programParts(summary: FileSummary | undefined, program: string):
       ...part(ph),
       children: summary.symbols.filter((s) => s.kind === 'step' && s.container?.toUpperCase() === `${upper} › ${ph.name.toUpperCase()}`).map(part),
     }));
-  // Handlers and subroutines belong to the program before them; a file normally holds one.
-  const others = summary.symbols.filter((s) => s.kind === 'handler' || s.kind === 'subroutine').map(part);
+  // Handlers and subroutines belong to the program before them; a CL/AM package can hold several.
+  const ownerOf = (line: number) => [...summary.programs].reverse().find((p) => p.nameRange.start.line <= line)?.name.toUpperCase();
+  const others = summary.symbols
+    .filter((s) => (s.kind === 'handler' || s.kind === 'subroutine') && (summary.programs.length <= 1 || ownerOf(s.range.start.line) === upper))
+    .map(part);
   return [...phases, ...others];
 }
 
@@ -60,7 +63,14 @@ export function programParts(summary: FileSummary | undefined, program: string):
 export function programStatus(uri: string, files: ListingFile[], lines: string[] | undefined): ProgramStatus {
   const le = files.find((f) => f.kind === 'LE');
   const errors = le ? (le.listing.errorCount ?? le.listing.messages.filter((m) => m.severity === 1).length) : 0;
-  const changed = !!lines && files.some((f) => placeMessages(f.listing, lines).stale);
+  // As Compare with Last Compile sees it: the whole .LS against the file, else the lines an .LE shows.
+  const compiled = lines && compiledSource(files, lines);
+  const trimmed = (ls: string[]) => {
+    const out = ls.map((l) => l.trimEnd());
+    while (out.length && out[out.length - 1] === '') out.pop();
+    return out.join('\n');
+  };
+  const changed = !!lines && !!compiled && (compiled.whole ? trimmed(compiled.lines) !== trimmed(lines) : files.some((f) => placeMessages(f.listing, lines).stale));
   return { uri, errors, changed, noListing: files.length === 0 };
 }
 

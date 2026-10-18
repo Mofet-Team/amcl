@@ -262,6 +262,13 @@ export class WorkspaceIndex {
     return this.get().storage;
   }
 
+  /** Number of SEQUENCEs and BLOCKs, without deriving the cross-file tables. */
+  programCount(): number {
+    let n = 0;
+    for (const s of this.files.values()) n += s.programs.length;
+    return n;
+  }
+
   summaryOf(uri: string): FileSummary | undefined {
     return this.files.get(uri);
   }

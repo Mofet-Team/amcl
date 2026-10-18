@@ -44,6 +44,8 @@ import {
   PROGRAMS_CHANGED,
   PROGRAMS_REQUEST,
   COMPILED_SOURCE_REQUEST,
+  LOCATE_REQUEST,
+  LocateParams,
   SHARED_STORAGE_REQUEST,
   STORAGE_ACCESSES_REQUEST,
 } from '../shared/programs';
@@ -95,7 +97,7 @@ function analysisOf(doc: TextDocument): { analysis: Analysis; summary: FileSumma
   const entry = { version: doc.version, analysis, summary };
   cache.set(doc.uri, entry);
   index.setFile(doc.uri, summary);
-  indexChanged();
+  viewsMayChange(doc.uri, summary);
   return entry;
 }
 
@@ -176,9 +178,14 @@ async function indexFile(p: string): Promise<void> {
   const uri = pathToUri(p);
   if (documents.get(uri)) return; // the open document is the source of truth
   const text = await readText(p, decoder);
-  if (text === undefined) index.deleteFile(uri);
-  else index.setFile(uri, summarize(analyzeText(uri, text)));
-  indexChanged();
+  if (text === undefined) {
+    index.deleteFile(uri);
+    viewsMayChange(uri, undefined);
+  } else {
+    const summary = summarize(analyzeText(uri, text));
+    index.setFile(uri, summary);
+    viewsMayChange(uri, summary);
+  }
 }
 
 async function loadPointDatabase(): Promise<void> {
@@ -298,7 +305,7 @@ connection.onDidChangeWatchedFiles(({ changes }) => {
     } else if (CL_FILE.test(p)) {
       if (c.type === FileChangeType.Deleted) {
         index.deleteFile(c.uri);
-        indexChanged();
+        viewsMayChange(c.uri, undefined);
       } else void indexFile(p);
       publishClosed(p);
     } else if (LISTING_FILE.test(p)) {
@@ -541,13 +548,30 @@ connection.onDocumentHighlight(({ textDocument, position }) => {
 // ------------------------------------------------------------------ CL Programs view
 
 let programsTimer: NodeJS.Timeout | undefined;
+/** What the views show of each file, to refresh them only when that changes and not on every keystroke. */
+const viewSignatures = new Map<string, string>();
 
-/** Tell the CL Programs view, once things settle, that programs may have changed. */
+function viewsMayChange(uri: string, summary: FileSummary | undefined): void {
+  // Positions are left out: the views find entries by name when clicked.
+  const sig = summary
+    ? JSON.stringify([
+        summary.programs.map((p) => [p.kind, p.name, p.point, p.dialect]),
+        summary.symbols.map((s) => [s.kind, s.name, s.container, s.detail]),
+        summary.storage.map((u) => [u.point, u.param, u.index, u.local?.name, u.written, u.local?.writes?.length, u.local?.refs.length]),
+      ])
+    : undefined;
+  if (viewSignatures.get(uri) === sig) return;
+  if (sig === undefined) viewSignatures.delete(uri);
+  else viewSignatures.set(uri, sig);
+  indexChanged();
+}
+
+/** Tell the views, once things settle, that what they show may have changed. */
 function indexChanged(): void {
   clearTimeout(programsTimer);
   programsTimer = setTimeout(() => {
-    const count = index.programList().length;
-    void connection.sendNotification(PROGRAMS_CHANGED, { count });
+    // Counted from the summaries: deriving the cross-file tables here would cost every edit.
+    void connection.sendNotification(PROGRAMS_CHANGED, { count: index.programCount() });
   }, 1500);
 }
 
@@ -572,6 +596,17 @@ connection.onRequest(COMPILED_SOURCE_REQUEST, ({ uri }: { uri: string }) => {
 });
 
 connection.onRequest(STORAGE_ACCESSES_REQUEST, ({ key }: { key: string }) => storageAccesses(index, key));
+
+/** Where an entry of the views is now. */
+connection.onRequest(LOCATE_REQUEST, ({ uri, kind, name }: LocateParams) => {
+  const doc = documents.get(uri);
+  const summary = doc && !isListing(doc) ? analysisOf(doc).summary : index.summaryOf(uri);
+  if (!summary) return null;
+  const upper = name.toUpperCase();
+  if (kind === 'sequence' || kind === 'block') return summary.programs.find((p) => p.name.toUpperCase() === upper)?.nameRange.start ?? null;
+  if (kind === 'local') return summary.storage.find((u) => u.local?.name.toUpperCase() === upper)?.local?.decl.start ?? null;
+  return summary.symbols.find((s) => s.kind === kind && s.name.toUpperCase() === upper)?.range.start ?? null;
+});
 
 // ------------------------------------------------------------------ formatting
 

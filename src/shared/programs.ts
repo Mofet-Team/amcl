@@ -100,3 +100,12 @@ export interface CompiledSource {
 }
 
 export const COMPILED_SOURCE_REQUEST = 'amcl/compiledSource';
+
+/** Where a program, part or LOCAL is now, by name: the views' lines may predate edits. */
+export interface LocateParams {
+  uri: string;
+  kind: 'sequence' | 'block' | ProgramPart['kind'] | 'local';
+  name: string;
+}
+
+export const LOCATE_REQUEST = 'amcl/locate';

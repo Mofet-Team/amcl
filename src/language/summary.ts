@@ -24,7 +24,7 @@ export interface StorageUse {
   range: Range;
   /** For `LOCAL x AT ...`: the local's name, its declaration, every reference to it in this file, and the stores among them. */
   local?: { name: string; decl: Range; refs: Range[]; writes?: Range[] };
-  /** A direct access (`!BOX.FL(21)`) that stores: the target of SET, READ or a LOOP. */
+  /** A direct access (`!BOX.FL(21)`) that stores: the target of SET, READ, WRITE or a LOOP. */
   written?: boolean;
 }
 
@@ -95,7 +95,7 @@ export function summarize(a: Analysis): FileSummary {
     return undefined;
   };
 
-  // Stores: targets of SET and READ, and LOOP counters, keyed by position.
+  // Stores: targets of SET, READ and WRITE, and LOOP counters, keyed by position.
   const written = new Set<string>();
   const markTarget = (t: Expr) => {
     const id = t.kind === 'name' ? t.id : t.kind === 'apply' && t.callee.kind === 'name' ? t.callee.id : undefined;
@@ -106,7 +106,7 @@ export function summarize(a: Analysis): FileSummary {
 
   walk(a.file, {
     statement(st) {
-      if (st.kind === 'set' || st.kind === 'read') st.targets.forEach(markTarget);
+      if (st.kind === 'set' || st.kind === 'read' || st.kind === 'write') st.targets.forEach(markTarget);
       if (st.kind === 'loop' && st.counter) written.add(key(st.counter.range));
     },
     unit(unit) {

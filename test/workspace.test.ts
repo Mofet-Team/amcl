@@ -392,3 +392,32 @@ describe('CL Shared Storage view data', () => {
     expect(sharedStorage(index)).toEqual([]);
   });
 });
+
+describe('view data fixes', () => {
+  it('counts WRITE ... FROM as a store', async () => {
+    const { analyze } = await import('../src/language/analyze');
+    const { summarize } = await import('../src/language/summary');
+    const s = summarize(analyze('SEQUENCE S (HPM; POINT S)\nEXTERNAL $NM01N05\nLOCAL N AT NN(1)\nPHASE P\nWRITE $NM01N05.NN(7) FROM N\nEND S'));
+    expect(s.storage.find((u) => u.point === '$NM01N05')?.written).toBe(true);
+    expect(s.storage.find((u) => u.local?.name === 'N')?.local?.writes).toEqual([]);
+  });
+
+  it('marks a program changed exactly as Compare with Last Compile sees it', async () => {
+    const { parseListing } = await import('../src/language/listing');
+    const { programStatus } = await import('../src/server/programs');
+    const cut = parseListing(['     1            SET A = 1', '     2            SET B = 22222 +'].join('\n'));
+    const file = { path: '/x/A.LS', kind: 'LS' as const, mtime: 0, listing: cut };
+    // Line 2 was cut at the page width: the same compile.
+    expect(programStatus('u', [file], ['    SET A = 1', '    SET B = 22222 + 3']).changed).toBe(false);
+    expect(programStatus('u', [file], ['    SET A = 2', '    SET B = 22222 + 3']).changed).toBe(true);
+  });
+
+  it('lists handlers and subroutines under the program they follow', async () => {
+    const { analyze } = await import('../src/language/analyze');
+    const { summarize } = await import('../src/language/summary');
+    const { programParts } = await import('../src/server/programs');
+    const s = summarize(analyze('PACKAGE\nBLOCK B1 (GENERIC; AT GENERAL)\nEXIT\nEND B1\nSUBROUTINE S1\nEXIT\nEND S1\nBLOCK B2 (GENERIC; AT GENERAL)\nEXIT\nEND B2\nSUBROUTINE S2\nEXIT\nEND S2\nEND PACKAGE'));
+    expect(programParts(s, 'B1').map((p) => p.name)).toEqual(['S1']);
+    expect(programParts(s, 'B2').map((p) => p.name)).toEqual(['S2']);
+  });
+});

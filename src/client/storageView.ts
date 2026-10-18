@@ -1,6 +1,7 @@
-import { Event, EventEmitter, MarkdownString, Position, Range, ThemeIcon, TreeDataProvider, TreeItem, TreeItemCollapsibleState, Uri } from 'vscode';
+import { Event, EventEmitter, MarkdownString, ThemeIcon, TreeDataProvider, TreeItem, TreeItemCollapsibleState } from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { SHARED_STORAGE_REQUEST, STORAGE_ACCESSES_REQUEST, StorageAccess, StorageSlot } from '../shared/programs';
+import { openEntryCommand } from './openEntry';
 
 type Node =
   | { kind: 'lcn'; name: string; slots: StorageSlot[] }
@@ -93,13 +94,12 @@ export class StorageView implements TreeDataProvider<Node> {
         item.tooltip = new MarkdownString(
           [
             `**${s.owner === 'Box' ? `${s.hpm} box` : s.owner} ${s.param}(${s.index})**`,
-            '',
-            s.tag ? `Tag **${s.tag}**${s.tagDescriptor ? `: ${s.tagDescriptor}` : ''}, a box ${s.param === 'FL' ? 'Flag' : 'Numeric'} point: displays and other systems can read and write it.` : '',
-            '',
+            s.tag && `Tag **${s.tag}**${s.tagDescriptor ? `: ${s.tagDescriptor}` : ''}, a box ${s.param === 'FL' ? 'Flag' : 'Numeric'} point: displays and other systems can read and write it.`,
             `Used by ${who}.`,
-            '',
             locals.length ? `LOCAL names: ${locals.join(', ')}` : 'Accessed directly only.',
-          ].join('\n'),
+          ]
+            .filter(Boolean)
+            .join('\n\n'),
         );
         return item;
       }
@@ -114,8 +114,8 @@ export class StorageView implements TreeDataProvider<Node> {
           const counts = [a.writes && `stores ${a.writes}`, a.reads && `reads ${a.reads}`].filter(Boolean).join(', ');
           item.description = `${a.name ?? 'direct'}${counts ? ` · ${counts}` : ''}`;
         }
-        const at = new Position(a.line, a.character);
-        item.command = { command: 'vscode.open', title: 'Open', arguments: [Uri.parse(a.uri), { selection: new Range(at, at) }] };
+        // A LOCAL is found by name when clicked; a tag or a direct access opens where it was listed.
+        item.command = openEntryCommand({ uri: a.uri, line: a.line, character: a.character, ...(a.name && !a.tag ? { kind: 'local' as const, name: a.name } : {}) });
         return item;
       }
     }
