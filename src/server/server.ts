@@ -37,8 +37,15 @@ import { isWhole, ListingView, sourceView, wholeView } from './listingView';
 import { Listing, parseListing, placeMessages } from '../language/listing';
 import { Severity } from '../language/types';
 import { FormatOptions, formatCl, learnColumns, readFormatRules } from '../language/format';
-import { programItems, programParts, programStatus } from './programs';
-import { PROGRAM_PARTS_REQUEST, PROGRAM_STATUS_REQUEST, PROGRAMS_CHANGED, PROGRAMS_REQUEST } from '../shared/programs';
+import { programItems, programParts, programStatus, sharedStorage, storageAccesses } from './programs';
+import {
+  PROGRAM_PARTS_REQUEST,
+  PROGRAM_STATUS_REQUEST,
+  PROGRAMS_CHANGED,
+  PROGRAMS_REQUEST,
+  SHARED_STORAGE_REQUEST,
+  STORAGE_ACCESSES_REQUEST,
+} from '../shared/programs';
 
 /** Settings under `amcl.*`, plus the encoding VS Code uses for CL files. */
 interface Settings {
@@ -554,6 +561,10 @@ connection.onRequest(PROGRAM_STATUS_REQUEST, ({ uris }: { uris: string[] }) =>
     return programStatus(uri, p ? listings.companions(p) : [], p ? linesOf(p) : undefined);
   }),
 );
+
+connection.onRequest(SHARED_STORAGE_REQUEST, () => sharedStorage(index));
+
+connection.onRequest(STORAGE_ACCESSES_REQUEST, ({ key }: { key: string }) => storageAccesses(index, key));
 
 // ------------------------------------------------------------------ formatting
 

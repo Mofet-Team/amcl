@@ -22,8 +22,10 @@ export interface StorageUse {
   bound?: string;
   /** The `param(index)` part (or the `.PV`), which is where the cursor selects the storage. */
   range: Range;
-  /** For `LOCAL x AT ...`: the local's name, its declaration and every reference to it in this file. */
-  local?: { name: string; decl: Range; refs: Range[] };
+  /** For `LOCAL x AT ...`: the local's name, its declaration, every reference to it in this file, and the stores among them. */
+  local?: { name: string; decl: Range; refs: Range[]; writes?: Range[] };
+  /** A direct access (`!BOX.FL(21)`) that stores: the target of SET, READ or a LOOP. */
+  written?: boolean;
 }
 
 export interface ProgramSummary {
@@ -93,7 +95,20 @@ export function summarize(a: Analysis): FileSummary {
     return undefined;
   };
 
+  // Stores: targets of SET and READ, and LOOP counters, keyed by position.
+  const written = new Set<string>();
+  const markTarget = (t: Expr) => {
+    const id = t.kind === 'name' ? t.id : t.kind === 'apply' && t.callee.kind === 'name' ? t.callee.id : undefined;
+    if (id) written.add(key(id.range));
+    const use = slotUse(t);
+    if (use) written.add(key(use.range));
+  };
+
   walk(a.file, {
+    statement(st) {
+      if (st.kind === 'set' || st.kind === 'read') st.targets.forEach(markTarget);
+      if (st.kind === 'loop' && st.counter) written.add(key(st.counter.range));
+    },
     unit(unit) {
       if ((unit.kind === 'sequence' || unit.kind === 'block') && unit.name) {
         programs.push({
@@ -146,9 +161,10 @@ export function summarize(a: Analysis): FileSummary {
       const use = slotUse(e);
       if (!use) return;
       const bound = main && (main.kind === 'sequence' || main.kind === 'block') ? main.point?.name : undefined;
-      storage.push({ point: use.point?.name, param: use.param.name, index: use.index, bound, range: use.range });
+      storage.push({ point: use.point?.name, param: use.param.name, index: use.index, bound, range: use.range, written: written.has(key(use.range)) || undefined });
     },
   });
+  for (const u of storage) if (u.local) u.local.writes = u.local.refs.filter((r) => written.has(key(r)));
 
   return { programs, pointRefs, storage, symbols, members: [...memberCounts.values()] };
 }

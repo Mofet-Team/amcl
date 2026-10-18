@@ -176,6 +176,13 @@
           "name": "CL Programs",
           "icon": "$(server)",
           "when": "amcl.hasPrograms"
+        },
+        {
+          "id": "amclStorage",
+          "name": "CL Shared Storage",
+          "icon": "$(database)",
+          "when": "amcl.hasPrograms",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -206,7 +213,7 @@
       "view/title": [
         {
           "command": "amcl.refreshPrograms",
-          "when": "view == amclPrograms",
+          "when": "view == amclPrograms || view == amclStorage",
           "group": "navigation"
         }
       ]

@@ -1,33 +1,24 @@
 import { placeMessages } from '../language/listing';
 import { FileSummary } from '../language/summary';
 import { WorkspaceIndex } from '../language/workspace';
-import { ProgramItem, ProgramPart, ProgramStatus } from '../shared/programs';
+import { ProgramItem, ProgramPart, ProgramStatus, StorageAccess, StorageSlot } from '../shared/programs';
 import { ListingFile } from './listings';
+
+/** The LCN and HPM label of a box key (`net/ucn:node`, or `G…` for a group the database does not place). */
+export function placeBox(box: string | undefined): { lcn?: string; hpm: string; hpmOrder: string } {
+  const m = box && /^(.*)\/(\d+):(\d+)$/.exec(box);
+  const two = (n: string) => n.padStart(2, '0');
+  if (m) return { lcn: m[1] || undefined, hpm: `HPM ${two(m[2])}/${two(m[3])}`, hpmOrder: `0 ${m[2].padStart(4, '0')} ${m[3].padStart(4, '0')}` };
+  // Placed together by shared storage, but not in the point database.
+  if (box?.startsWith('G')) return { hpm: 'HPM not in the point database', hpmOrder: '1' };
+  return { hpm: 'No bound point', hpmOrder: '3' };
+}
 
 /** Every program, with the LCN and HPM it runs in, for the CL Programs view. */
 export function programItems(index: WorkspaceIndex): ProgramItem[] {
   return index.programList().map((p) => {
-    const m = p.box && /^(.*)\/(\d+):(\d+)$/.exec(p.box);
-    const two = (n: string) => n.padStart(2, '0');
-    let lcn: string | undefined;
-    let hpm: string;
-    let hpmOrder: string;
-    if (p.kind === 'block') {
-      // CL/AM blocks run in an Application Module, not in an HPM.
-      hpm = 'CL/AM';
-      hpmOrder = '2';
-    } else if (m) {
-      lcn = m[1] || undefined;
-      hpm = `HPM ${two(m[2])}/${two(m[3])}`;
-      hpmOrder = `0 ${m[2].padStart(4, '0')} ${m[3].padStart(4, '0')}`;
-    } else if (p.box?.startsWith('G')) {
-      // Placed together by shared storage, but not in the point database.
-      hpm = 'HPM not in the point database';
-      hpmOrder = '1';
-    } else {
-      hpm = 'No bound point';
-      hpmOrder = '3';
-    }
+    // CL/AM blocks run in an Application Module, not in an HPM.
+    const { lcn, hpm, hpmOrder } = p.kind === 'block' ? { lcn: undefined, hpm: 'CL/AM', hpmOrder: '2' } : placeBox(p.box);
     return {
       uri: p.uri,
       name: p.name,
@@ -71,4 +62,67 @@ export function programStatus(uri: string, files: ListingFile[], lines: string[]
   const errors = le ? (le.listing.errorCount ?? le.listing.messages.filter((m) => m.severity === 1).length) : 0;
   const changed = !!lines && files.some((f) => placeMessages(f.listing, lines).stale);
   return { uri, errors, changed, noListing: files.length === 0 };
+}
+
+/**
+ * Storage elements two programs or more use: box variables, slots of a process module used by
+ * other programs, and array point elements. Grouped like programs, by the HPM they are in.
+ */
+export function sharedStorage(index: WorkspaceIndex): StorageSlot[] {
+  const boxOfModule = new Map<string, string | undefined>();
+  for (const p of index.programList()) if (p.point && !boxOfModule.has(p.point)) boxOfModule.set(p.point, p.box);
+  const pointBox = (name: string) => {
+    const rec = index.point(name);
+    return (rec && index.boxOfPoint(rec)) ?? boxOfModule.get(name);
+  };
+  // Copies of a program bound to the same point are one sequence slot, loaded one at a time.
+  const slotOf = (uri: string) => index.summaryOf(uri)?.programs[0]?.point ?? uri;
+  const out: StorageSlot[] = [];
+  for (const [key, entries] of index.storageEntries()) {
+    const accesses = entries.filter((e) => e.kind !== 'point');
+    const slots = new Set(accesses.map((e) => slotOf(e.uri)));
+    if (slots.size < 2) continue;
+    const parts = key.split(':');
+    const kind = parts[0];
+    const index_ = Number(parts[parts.length - 1]);
+    const param = parts[parts.length - 2];
+    const owner = parts.slice(1, -2).join(':');
+    const box = kind === 'BOX' ? owner : pointBox(owner);
+    const writers = new Set(accesses.filter((e) => e.written || (e.local?.writes?.length ?? 0) > 0).map((e) => slotOf(e.uri)));
+    const names = [...new Set([...accesses.flatMap((e) => (e.local ? [e.local.name] : [])), ...entries.flatMap((e) => (e.point ? [e.point.name] : []))])];
+    out.push({
+      key,
+      ...placeBox(box),
+      ownerKind: kind === 'BOX' ? 'box' : kind === 'ARR' ? 'array' : 'module',
+      owner: kind === 'BOX' ? 'Box' : owner,
+      param,
+      index: index_,
+      names,
+      programs: slots.size,
+      writers: writers.size,
+    });
+  }
+  return out;
+}
+
+/** Each program's accesses to one storage element: through which LOCAL, how often it stores and reads. */
+export function storageAccesses(index: WorkspaceIndex, key: string): StorageAccess[] {
+  const out = new Map<string, StorageAccess>();
+  for (const e of index.storageEntries().get(key) ?? []) {
+    if (e.kind === 'point') continue;
+    // The file name: copies of one program differ only in it.
+    const program = decodeURIComponent(e.uri.replace(/^.*\//, '')).replace(/\.cl$/i, '');
+    const name = e.local?.name;
+    const id = `${e.uri}|${name ?? ''}`;
+    const at = e.local ? e.local.decl.start : e.range.start;
+    const writes = e.local ? (e.local.writes?.length ?? 0) : e.written ? 1 : 0;
+    // A LOCAL's references include its declaration.
+    const reads = e.local ? Math.max(0, e.local.refs.length - 1 - writes) : e.written ? 0 : 1;
+    const a = out.get(id);
+    if (a) {
+      a.writes += writes;
+      a.reads += reads;
+    } else out.set(id, { program, uri: e.uri, name, line: at.line, character: at.character, writes, reads });
+  }
+  return [...out.values()].sort((a, b) => b.writes - a.writes || a.program.localeCompare(b.program));
 }

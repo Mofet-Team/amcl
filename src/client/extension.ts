@@ -2,6 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { commands, ExtensionContext, Uri, window, workspace } from 'vscode';
 import { ProgramsView } from './programsView';
+import { StorageView } from './storageView';
 import { PROGRAMS_CHANGED } from '../shared/programs';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
@@ -40,15 +41,21 @@ export async function activate(context: ExtensionContext): Promise<void> {
   context.subscriptions.push(commands.registerCommand('amcl.createFormatRules', createFormatRules));
 
   const programs = new ProgramsView(client);
+  const storage = new StorageView(client);
   context.subscriptions.push(
     window.registerTreeDataProvider('amclPrograms', programs),
-    commands.registerCommand('amcl.refreshPrograms', () => programs.refresh()),
+    window.registerTreeDataProvider('amclStorage', storage),
+    commands.registerCommand('amcl.refreshPrograms', () => {
+      programs.refresh();
+      storage.refresh();
+    }),
   );
   await client.start();
   // The view shows in workspaces with CL programs, and refreshes when the server's index changes.
   client.onNotification(PROGRAMS_CHANGED, ({ count }: { count: number }) => {
     void commands.executeCommand('setContext', 'amcl.hasPrograms', count > 0);
     programs.refresh();
+    storage.refresh();
   });
 }
 

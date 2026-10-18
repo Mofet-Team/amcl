@@ -146,6 +146,11 @@ parameter lists and enumerations.
   HPM (UCN/node), then each program's phases with their steps, handlers and subroutines. A
   click opens the code. Programs marked red have errors in their `.LE`; yellow ones changed
   since the compile that wrote their listing. Listings are read only for the HPMs you open.
+- **CL Shared Storage** view in the Explorer: every box variable, sequence slot and array
+  element that two sequences or more use (copies of one program count once), by LCN and HPM,
+  then by owner: box flags, numerics, times and strings, each sequence's slots, and arrays. An
+  element shows the LOCAL names it goes by and how many sequences store to it; opened, it lists
+  each program with the LOCAL it uses and how often it stores and reads, and a click goes there.
 - Snippets, comment toggling, bracket matching
 
 ## Requirements
@@ -227,6 +232,7 @@ Bug reports are welcome!
   collapsed; entries name their CL kind (SEQUENCE, PHASE, STEP, SUBROUTINE, HOLD HANDLER...),
   and a phase shows the handlers its heading enables.
 - CL Programs view: programs by LCN and HPM, with their parts and compile status.
+- CL Shared Storage view: storage two sequences or more use, with who stores and who reads.
 
 ### 0.6.1
 

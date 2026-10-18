@@ -342,3 +342,48 @@ describe('CL Programs view data', () => {
     expect(programStatus('u', [], valve)).toEqual({ uri: 'u', errors: 0, changed: false, noListing: true });
   });
 });
+
+describe('CL Shared Storage view data', () => {
+  it('lists storage two sequences use, with who stores to it and who reads it', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const { analyze } = await import('../src/language/analyze');
+    const { parseEb } = await import('../src/language/eb');
+    const { summarize } = await import('../src/language/summary');
+    const { WorkspaceIndex } = await import('../src/language/workspace');
+    const { sharedStorage, storageAccesses } = await import('../src/server/programs');
+    const ws = path.join(__dirname, 'fixtures', 'ws');
+    const index = new WorkspaceIndex();
+    index.setPoints(parseEb(fs.readFileSync(path.join(ws, 'db', 'HPM09.EB'), 'utf8'), 'HPM09.EB'), (f) => f);
+    for (const f of ['MIXER.CL', 'DOSER.CL', 'AMBLK.CL']) index.setFile(`file:///ws/${f}`, summarize(analyze(fs.readFileSync(path.join(ws, f), 'utf8'))));
+
+    const slots = sharedStorage(index);
+    const brief = slots.map((s) => `${s.hpm} ${s.ownerKind} ${s.owner} ${s.param}(${s.index}) ${s.names.join('/')} ${s.programs}p ${s.writers}w`).sort();
+    // FL(1002): MIXER reads ARR1.FL(2), which the database maps onto it; DOSER stores to it directly.
+    // AGIT_ON is the box Flag point at FL(21).
+    expect(brief).toEqual([
+      'HPM 01/09 box Box FL(1002)  2p 1w',
+      'HPM 01/09 box Box FL(21) AGITATE/READY/AGIT_ON 3p 2w',
+      'HPM 01/09 module DOSER NN(5) DOSE_QTY/QTY 3p 3w',
+    ]);
+
+    const flag = slots.find((s) => s.param === 'FL' && s.index === 21)!;
+    expect(storageAccesses(index, flag.key).map((a) => `${a.program} ${a.name ?? 'direct'} w${a.writes} r${a.reads}`)).toEqual([
+      'AMBLK direct w1 r0',
+      'MIXER AGITATE w1 r0',
+      'DOSER READY w0 r1',
+    ]);
+  });
+
+  it('counts copies of one program, bound to the same point, once', async () => {
+    const { analyze } = await import('../src/language/analyze');
+    const { summarize } = await import('../src/language/summary');
+    const { WorkspaceIndex } = await import('../src/language/workspace');
+    const { sharedStorage } = await import('../src/server/programs');
+    const src = 'SEQUENCE A (HPM; POINT A)\nEXTERNAL !BOX\nLOCAL F: LOGICAL AT !BOX.FL(7)\nPHASE P\nSET F = ON\nEND A';
+    const index = new WorkspaceIndex();
+    index.setFile('file:///A.CL', summarize(analyze(src)));
+    index.setFile('file:///A_OLD.CL', summarize(analyze(src)));
+    expect(sharedStorage(index)).toEqual([]);
+  });
+});

@@ -13,10 +13,12 @@ export interface PointLocation extends Location {
   point: PointRecord;
 }
 
-interface StorageEntry extends Location {
+export interface StorageEntry extends Location {
   kind: 'local' | 'use' | 'point';
-  /** For `local`: the local's name, its declaration and its references in that file. */
-  local?: { name: string; decl: Range; refs: Range[] };
+  /** For `local`: the local's name, its declaration, its references in that file and the stores among them. */
+  local?: { name: string; decl: Range; refs: Range[]; writes?: Range[] };
+  /** For `use`: the access stores. */
+  written?: boolean;
   /** For `point`: the box Numeric or Flag point. */
   point?: PointRecord;
 }
@@ -255,6 +257,11 @@ export class WorkspaceIndex {
     return out;
   }
 
+  /** Every storage key, with each LOCAL, direct access and database point at it. */
+  storageEntries(): Map<string, readonly Readonly<StorageEntry>[]> {
+    return this.get().storage;
+  }
+
   summaryOf(uri: string): FileSummary | undefined {
     return this.files.get(uri);
   }
@@ -330,7 +337,7 @@ export class WorkspaceIndex {
       if (net) derived.networkOfFile.set(uri, net);
       for (const u of s.storage) {
         const key = this.resolve(u, derived, net);
-        if (key) push(storage, key, { uri, range: u.range, kind: u.local ? 'local' : 'use', local: u.local });
+        if (key) push(storage, key, { uri, range: u.range, kind: u.local ? 'local' : 'use', local: u.local, written: u.written });
       }
     }
     // Box Numeric and Flag points are named views of one box element.
