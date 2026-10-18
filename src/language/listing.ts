@@ -47,6 +47,8 @@ export interface Listing {
   errorCount?: number;
   /** File name of the main source, from "The following source file(s) were referenced". */
   mainSource?: string;
+  /** Date and time of the compile as the page header prints it, e.g. `06/13/23 09:15`. */
+  compiled?: string;
 }
 
 /**
@@ -110,8 +112,13 @@ export function parseListing(text: string): Listing {
   let carets: number[] = [];
   let errorCount: number | undefined;
   let mainSource: string | undefined;
+  let compiled: string | undefined;
 
   lines.forEach((raw, i) => {
+    if (compiled === undefined && /^\s*CL V\d/.test(raw)) {
+      const d = /(\d\d\/\d\d\/\d\d)\s+(\d\d:\d\d)/.exec(raw);
+      if (d) compiled = `${d[1]} ${d[2]}`;
+    }
     const msg = MESSAGE.exec(raw);
     if (msg && msg[2]) {
       const catalog = lookupMessage(msg[2]);
@@ -152,7 +159,7 @@ export function parseListing(text: string): Listing {
       carets = [];
     }
   });
-  return { source, messages, errorCount, mainSource };
+  return { source, messages, errorCount, mainSource, compiled };
 }
 
 export interface PlacedMessage {

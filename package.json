@@ -197,6 +197,12 @@
         "title": "Refresh",
         "category": "CL",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "amcl.compareWithCompile",
+        "title": "Compare with Last Compile",
+        "category": "CL",
+        "icon": "$(git-compare)"
       }
     ],
     "menus": {
@@ -208,6 +214,31 @@
         {
           "command": "amcl.refreshPrograms",
           "when": "amcl.hasPrograms"
+        },
+        {
+          "command": "amcl.compareWithCompile",
+          "when": "editorLangId == cl"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "amcl.compareWithCompile",
+          "when": "resourceLangId == cl && resourceScheme == file",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "amcl.compareWithCompile",
+          "when": "resourceLangId == cl",
+          "group": "3_compare"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "amcl.compareWithCompile",
+          "when": "view == amclPrograms && viewItem == program",
+          "group": "navigation"
         }
       ],
       "view/title": [

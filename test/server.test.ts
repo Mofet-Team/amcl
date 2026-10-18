@@ -267,6 +267,13 @@ describe.skipIf(!fs.existsSync(serverPath))('language server: compiler listings'
     expect(hover.contents.value).toMatch(/OP/);
   });
 
+  it('gives the source of the last compile, for Compare with Last Compile', async () => {
+    const heater = await client.request('amcl/compiledSource', { uri: uriOf('HEATER.CL') });
+    expect(heater).toMatchObject({ listing: 'HEATER.LS', kind: 'LS', compiled: '14/10/26 09:12', whole: true });
+    expect(heater.lines[2]).toBe('    LOCAL SPARE: LOGICAL AT FL(1)');
+    expect(await client.request('amcl/compiledSource', { uri: uriOf('VALVE.CL') })).toMatchObject({ kind: 'LE', whole: false });
+  });
+
   it('adds listing messages to an open source, without repeating its own warnings', async () => {
     const uri = uriOf('HEATER.CL');
     client.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'cl', version: 1, text: fixture('listing/HEATER.CL') } });

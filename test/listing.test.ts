@@ -225,3 +225,25 @@ describe('listing views', () => {
     expect(v.analysis.diagnostics.filter((d) => d.severity === 1)).toEqual([]);
   });
 });
+
+describe('compiled source', () => {
+  it('reads the compile date from the page header, as printed', () => {
+    expect(heaterLs.compiled).toBe('14/10/26 09:12');
+    expect(parseListing('  CL V68.101    64_V1                         06/13/23 09:15:13:7361     Page      1').compiled).toBe('06/13/23 09:15');
+  });
+
+  it('gives the source of a whole listing, and restores lines cut at the page width', async () => {
+    const { compiledSource } = await import('../src/server/listings');
+    const file = (listing: ReturnType<typeof parseListing>, kind: 'LS' | 'LE') => ({ path: `/x/A.${kind}`, kind, mtime: 0, listing });
+    const ls = compiledSource([file(heaterLs, 'LS')], heater);
+    expect(ls).toMatchObject({ listing: 'A.LS', kind: 'LS', compiled: '14/10/26 09:12', whole: true });
+    expect(ls!.lines).toEqual(heater.slice(0, 7));
+
+    const cut = parseListing(['     1            SET A = 1', '     2            SET B = 22222 +'].join('\n'));
+    // Line 2 is at the listing's widest, so it was cut; a short line that grew is a change.
+    expect(compiledSource([file(cut, 'LS')], ['    SET A = 1 + 1', '    SET B = 22222 + 3'])!.lines).toEqual(['    SET A = 1', '    SET B = 22222 + 3']);
+
+    expect(compiledSource([file(valveLe, 'LE')], valve)).toMatchObject({ kind: 'LE', whole: false, lines: [] });
+    expect(compiledSource([], valve)).toBeUndefined();
+  });
+});

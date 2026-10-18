@@ -32,7 +32,7 @@ import { hover } from './features/hover';
 import { definition, documentHighlights, references } from './features/navigation';
 import { documentSymbols } from './features/outline';
 import { decoderFor, findFiles, pathToUri, readText, resolvePaths, uriToPath } from './loader';
-import { compilerDiagnostics, LISTING_FILE, ListingStore } from './listings';
+import { compiledSource, compilerDiagnostics, LISTING_FILE, ListingStore } from './listings';
 import { isWhole, ListingView, sourceView, wholeView } from './listingView';
 import { Listing, parseListing, placeMessages } from '../language/listing';
 import { Severity } from '../language/types';
@@ -43,6 +43,7 @@ import {
   PROGRAM_STATUS_REQUEST,
   PROGRAMS_CHANGED,
   PROGRAMS_REQUEST,
+  COMPILED_SOURCE_REQUEST,
   SHARED_STORAGE_REQUEST,
   STORAGE_ACCESSES_REQUEST,
 } from '../shared/programs';
@@ -563,6 +564,12 @@ connection.onRequest(PROGRAM_STATUS_REQUEST, ({ uris }: { uris: string[] }) =>
 );
 
 connection.onRequest(SHARED_STORAGE_REQUEST, () => sharedStorage(index));
+
+/** What the last compile saw, for comparing with the current source. */
+connection.onRequest(COMPILED_SOURCE_REQUEST, ({ uri }: { uri: string }) => {
+  const p = uriToPath(uri);
+  return (p && compiledSource(listings.companions(p), linesOf(p))) ?? null;
+});
 
 connection.onRequest(STORAGE_ACCESSES_REQUEST, ({ key }: { key: string }) => storageAccesses(index, key));
 

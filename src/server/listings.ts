@@ -5,6 +5,8 @@ import { LintDiagnostic } from '../language/lint';
 import { Listing, parseListing, placeMessages } from '../language/listing';
 import { Severity } from '../language/types';
 import { COMPILER_SOURCE, compilerCode, compilerSeverity } from './features/listing';
+import { isWhole } from './listingView';
+import { CompiledSource } from '../shared/programs';
 
 export const LISTING_FILE = /\.(ls|le)$/i;
 
@@ -140,4 +142,23 @@ export function compilerDiagnostics(
     }
   }
   return out;
+}
+
+/**
+ * The source of the last compile, from a listing beside the file: the whole .LS when there is one.
+ * Lines the listing cut at its page width are taken from the current source where it starts the
+ * same, so they do not show as changes.
+ */
+export function compiledSource(files: ListingFile[], current: string[] | undefined): CompiledSource | undefined {
+  const pick = files.find((f) => f.kind === 'LS' && isWhole(f.listing)) ?? files.find((f) => f.kind === 'LS') ?? files.find((f) => f.kind === 'LE');
+  if (!pick) return undefined;
+  const base = { listing: path.basename(pick.path), kind: pick.kind, compiled: pick.listing.compiled };
+  if (!isWhole(pick.listing)) return { ...base, whole: false, lines: [] };
+  const listed = pick.listing.source.map((s) => s.text.trimEnd());
+  const width = Math.max(0, ...listed.map((l) => l.length));
+  const lines = listed.map((l, i) => {
+    const now = current?.[i]?.trimEnd();
+    return now !== undefined && l.length >= width - 1 && now.length > l.length && now.startsWith(l) ? now : l;
+  });
+  return { ...base, whole: true, lines };
 }

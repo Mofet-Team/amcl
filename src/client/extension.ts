@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import { commands, ExtensionContext, Uri, window, workspace } from 'vscode';
 import { ProgramsView } from './programsView';
 import { StorageView } from './storageView';
+import { registerCompare } from './compare';
 import { PROGRAMS_CHANGED } from '../shared/programs';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
@@ -27,7 +28,12 @@ export async function activate(context: ExtensionContext): Promise<void> {
     debug: { module, transport: TransportKind.ipc, options: { execArgv: ['--nolazy', '--inspect=6009'] } },
   };
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [{ language: 'cl' }, { language: 'cl-listing' }],
+    // Real files only: the compiled source shown in a diff is a read-only copy, not to be checked.
+    documentSelector: [
+      { scheme: 'file', language: 'cl' },
+      { scheme: 'untitled', language: 'cl' },
+      { scheme: 'file', language: 'cl-listing' },
+    ],
     initializationOptions: settings(),
   };
   client = new LanguageClient('amcl', 'CL Language Server', serverOptions, clientOptions);
@@ -50,6 +56,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       storage.refresh();
     }),
   );
+  registerCompare(context, client);
   await client.start();
   // The view shows in workspaces with CL programs, and refreshes when the server's index changes.
   client.onNotification(PROGRAMS_CHANGED, ({ count }: { count: number }) => {

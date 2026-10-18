@@ -121,6 +121,11 @@ parameter lists and enumerations.
     only the lines with errors, so it works through the source file beside it.
   - Notes, such as "All enabled abnormal handlers are disabled", are hints: dots in the editor
     with the message on hover, not entries in the Problems panel.
+  - **CL: Compare with Last Compile** (the compare button on a CL editor, the file's context
+    menu, or a program in CL Programs) opens a diff of the source the `.LS` shows, which is what
+    was compiled, against the file now, with the compile date in the title. Lines the listing
+    cut at its page width are taken from the file where they start the same. An `.LE` holds only
+    the lines with errors, so a file with only an `.LE` cannot be compared.
   - Codes `compiler-error`, `compiler-warning`, `compiler-note` and `compiler-stale`. Compiler
     warnings the extension reports itself (unused names, for example) are shown once.
 - Formatting, only on request (**Format Document**, Shift+Alt+F, or **Format Selection**), in
@@ -233,6 +238,7 @@ Bug reports are welcome!
   and a phase shows the handlers its heading enables.
 - CL Programs view: programs by LCN and HPM, with their parts and compile status.
 - CL Shared Storage view: storage two sequences or more use, with who stores and who reads.
+- Compare with Last Compile: the compiled source from the `.LS` against the file, in a diff.
 
 ### 0.6.1
 

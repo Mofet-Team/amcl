@@ -77,3 +77,15 @@ export interface StorageAccess {
 
 export const SHARED_STORAGE_REQUEST = 'amcl/sharedStorage';
 export const STORAGE_ACCESSES_REQUEST = 'amcl/storageAccesses';
+
+/** The source a listing shows, which is what was compiled. */
+export interface CompiledSource {
+  listing: string;
+  kind: 'LS' | 'LE';
+  compiled?: string;
+  /** An error listing holds only the lines with errors; then `lines` is empty. */
+  whole: boolean;
+  lines: string[];
+}
+
+export const COMPILED_SOURCE_REQUEST = 'amcl/compiledSource';

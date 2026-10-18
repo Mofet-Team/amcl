@@ -139,6 +139,7 @@ export class ProgramsView implements TreeDataProvider<Node> {
     else if (status?.noListing) lines.push('', 'No listing beside it.');
     item.tooltip = new MarkdownString(lines.join('\n'));
     item.command = open(p.uri, p.line, p.character);
+    item.contextValue = 'program';
     return item;
   }
 }
