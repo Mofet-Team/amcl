@@ -37,6 +37,8 @@ import { isWhole, ListingView, sourceView, wholeView } from './listingView';
 import { Listing, parseListing, placeMessages } from '../language/listing';
 import { Severity } from '../language/types';
 import { FormatOptions, formatCl, learnColumns, readFormatRules } from '../language/format';
+import { programItems, programParts, programStatus } from './programs';
+import { PROGRAM_PARTS_REQUEST, PROGRAM_STATUS_REQUEST, PROGRAMS_CHANGED, PROGRAMS_REQUEST } from '../shared/programs';
 
 /** Settings under `amcl.*`, plus the encoding VS Code uses for CL files. */
 interface Settings {
@@ -85,6 +87,7 @@ function analysisOf(doc: TextDocument): { analysis: Analysis; summary: FileSumma
   const entry = { version: doc.version, analysis, summary };
   cache.set(doc.uri, entry);
   index.setFile(doc.uri, summary);
+  indexChanged();
   return entry;
 }
 
@@ -167,6 +170,7 @@ async function indexFile(p: string): Promise<void> {
   const text = await readText(p, decoder);
   if (text === undefined) index.deleteFile(uri);
   else index.setFile(uri, summarize(analyzeText(uri, text)));
+  indexChanged();
 }
 
 async function loadPointDatabase(): Promise<void> {
@@ -187,6 +191,7 @@ async function loadPointDatabase(): Promise<void> {
     if (ncf) networks.push(ncf);
   }
   index.setNetworks(networks);
+  indexChanged();
   connection.console.info(`amcl: point database: ${index.pointCount} points from ${files.length} .EB files`);
   warnIfMissing('amcl.pointDatabase', settings.pointDatabase, files.length > 0);
   warnIfMissing('amcl.networkConfig', settings.networkConfig, networks.length > 0);
@@ -283,8 +288,10 @@ connection.onDidChangeWatchedFiles(({ changes }) => {
       clearTimeout(ebReload);
       ebReload = setTimeout(() => void loadPointDatabase().then(republishAll), 500);
     } else if (CL_FILE.test(p)) {
-      if (c.type === FileChangeType.Deleted) index.deleteFile(c.uri);
-      else void indexFile(p);
+      if (c.type === FileChangeType.Deleted) {
+        index.deleteFile(c.uri);
+        indexChanged();
+      } else void indexFile(p);
       publishClosed(p);
     } else if (LISTING_FILE.test(p)) {
       listings.invalidate(p);
@@ -522,6 +529,31 @@ connection.onDocumentHighlight(({ textDocument, position }) => {
   }
   return withDoc(textDocument.uri, [], (_, a) => documentHighlights(a.binding, position));
 });
+
+// ------------------------------------------------------------------ CL Programs view
+
+let programsTimer: NodeJS.Timeout | undefined;
+
+/** Tell the CL Programs view, once things settle, that programs may have changed. */
+function indexChanged(): void {
+  clearTimeout(programsTimer);
+  programsTimer = setTimeout(() => {
+    const count = index.programList().length;
+    void connection.sendNotification(PROGRAMS_CHANGED, { count });
+  }, 1500);
+}
+
+connection.onRequest(PROGRAMS_REQUEST, () => programItems(index));
+
+connection.onRequest(PROGRAM_PARTS_REQUEST, ({ uri, program }: { uri: string; program: string }) => programParts(index.summaryOf(uri), program));
+
+/** Compile status from the listings, asked for the programs on screen only. */
+connection.onRequest(PROGRAM_STATUS_REQUEST, ({ uris }: { uris: string[] }) =>
+  uris.map((uri) => {
+    const p = uriToPath(uri);
+    return programStatus(uri, p ? listings.companions(p) : [], p ? linesOf(p) : undefined);
+  }),
+);
 
 // ------------------------------------------------------------------ formatting
 

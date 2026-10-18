@@ -158,6 +158,21 @@ describe.skipIf(!fs.existsSync(serverPath))('language server: workspace index', 
     expect(refs.map((d: any) => path.basename(new URL(d.uri).pathname)).sort()).toEqual(['AMBLK.CL', 'DOSER.CL', 'DOSER.CL', 'MIXER.CL']);
   });
 
+  it('serves the CL Programs view: programs by HPM, their parts, their compile status', async () => {
+    const programs = await client.request('amcl/programs', {});
+    expect(programs.map((p: any) => `${p.name} ${p.hpm}`).sort()).toEqual(['DOSER HPM 01/09', 'MIXER HPM 01/09', 'WATCH CL/AM']);
+    const parts = await client.request('amcl/programParts', { uri: mixerUri, program: 'MIXER' });
+    expect(parts.map((p: any) => `${p.kind} ${p.name}`)).toEqual(['phase RUN']);
+    const status = await client.request('amcl/programStatus', { uris: [mixerUri] });
+    expect(status).toEqual([{ uri: mixerUri, errors: 0, changed: false, noListing: true }]);
+    // The notice waits until indexing settles.
+    const changed = await until(
+      async () => client.notifications.some((n) => n.method === 'amcl/programsChanged' && n.params.count === 3),
+      (x) => x,
+    );
+    expect(changed).toBe(true);
+  });
+
   it('answers workspace symbol queries', async () => {
     const syms = await client.request('workspace/symbol', { query: 'TANK' });
     expect(syms.map((s: any) => s.name)).toEqual(['TANK_LVL']);

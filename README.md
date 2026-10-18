@@ -142,6 +142,10 @@ parameter lists and enumerations.
     "maxLineLength": 132
   }
   ```
+- **CL Programs** view in the Explorer: every program of the workspace by where it runs, LCN and
+  HPM (UCN/node), then each program's phases with their steps, handlers and subroutines. A
+  click opens the code. Programs marked red have errors in their `.LE`; yellow ones changed
+  since the compile that wrote their listing. Listings are read only for the HPMs you open.
 - Snippets, comment toggling, bracket matching
 
 ## Requirements
@@ -222,6 +226,7 @@ Bug reports are welcome!
 - Outline: phases are listed beside their sequence, so they show while the outline starts
   collapsed; entries name their CL kind (SEQUENCE, PHASE, STEP, SUBROUTINE, HOLD HANDLER...),
   and a phase shows the handlers its heading enables.
+- CL Programs view: programs by LCN and HPM, with their parts and compile status.
 
 ### 0.6.1
 

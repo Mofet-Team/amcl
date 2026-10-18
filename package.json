@@ -40,7 +40,8 @@
   "main": "./dist/client.js",
   "activationEvents": [
     "onLanguage:cl",
-    "onLanguage:cl-listing"
+    "onLanguage:cl-listing",
+    "workspaceContains:**/*.{CL,cl}"
   ],
   "contributes": {
     "configurationDefaults": {
@@ -168,11 +169,27 @@
         "url": "./schemas/clformat.schema.json"
       }
     ],
+    "views": {
+      "explorer": [
+        {
+          "id": "amclPrograms",
+          "name": "CL Programs",
+          "icon": "$(server)",
+          "when": "amcl.hasPrograms"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "amcl.createFormatRules",
         "title": "Create Formatting Rules from This File",
         "category": "CL"
+      },
+      {
+        "command": "amcl.refreshPrograms",
+        "title": "Refresh",
+        "category": "CL",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
@@ -180,6 +197,17 @@
         {
           "command": "amcl.createFormatRules",
           "when": "editorLangId == cl"
+        },
+        {
+          "command": "amcl.refreshPrograms",
+          "when": "amcl.hasPrograms"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "amcl.refreshPrograms",
+          "when": "view == amclPrograms",
+          "group": "navigation"
         }
       ]
     },

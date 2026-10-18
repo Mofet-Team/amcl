@@ -303,3 +303,42 @@ describe('workspace index without a point database', () => {
     expect(target('MIXER.CL', 'TANK_LVL.PV', 0, 9)).toBeUndefined();
   });
 });
+
+describe('CL Programs view data', () => {
+  it('places programs in their HPM, lists their parts, and reads their listings', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const { analyze } = await import('../src/language/analyze');
+    const { parseEb } = await import('../src/language/eb');
+    const { summarize } = await import('../src/language/summary');
+    const { WorkspaceIndex } = await import('../src/language/workspace');
+    const { programItems, programParts, programStatus } = await import('../src/server/programs');
+    const { parseListing } = await import('../src/language/listing');
+    const ws = path.join(__dirname, 'fixtures', 'ws');
+    const index = new WorkspaceIndex();
+    index.setPoints(parseEb(fs.readFileSync(path.join(ws, 'db', 'HPM09.EB'), 'utf8'), 'HPM09.EB'), (f) => f);
+    for (const f of ['MIXER.CL', 'DOSER.CL', 'AMBLK.CL']) index.setFile(`file:///${f}`, summarize(analyze(fs.readFileSync(path.join(ws, f), 'utf8'))));
+
+    const items = programItems(index).sort((a, b) => a.name.localeCompare(b.name));
+    expect(items.map((p) => [p.name, p.kind, p.hpm])).toEqual([
+      ['DOSER', 'sequence', 'HPM 01/09'],
+      ['MIXER', 'sequence', 'HPM 01/09'],
+      ['WATCH', 'block', 'CL/AM'],
+    ]);
+
+    const reactor = summarize(analyze(fs.readFileSync(path.join(__dirname, 'fixtures', 'reactor.cl'), 'utf8')));
+    const parts = programParts(reactor, 'REACT1');
+    expect(parts.map((p) => [p.kind, p.name, p.detail ?? '', (p.children ?? []).map((c) => c.name).join(',')])).toEqual([
+      ['phase', 'PREPARE', '', 'ST01,ST02'],
+      ['phase', 'HEAT', '', ''],
+      ['handler', 'HLD1', 'HOLD HANDLER', ''],
+      ['handler', 'SHDN1', 'SHUTDOWN HANDLER', ''],
+      ['subroutine', 'CHECK', '', ''],
+    ]);
+
+    const le = parseListing(fs.readFileSync(path.join(__dirname, 'fixtures', 'listing', 'VALVE.LE'), 'utf8'));
+    const valve = fs.readFileSync(path.join(__dirname, 'fixtures', 'listing', 'VALVE.CL'), 'utf8').split('\n');
+    expect(programStatus('u', [{ path: 'VALVE.LE', kind: 'LE', mtime: 0, listing: le }], valve)).toEqual({ uri: 'u', errors: 2, changed: false, noListing: false });
+    expect(programStatus('u', [], valve)).toEqual({ uri: 'u', errors: 0, changed: false, noListing: true });
+  });
+});

@@ -39,6 +39,8 @@ export interface SymbolSummary {
   kind: 'sequence' | 'block' | 'handler' | 'subroutine' | 'phase' | 'step' | 'package' | 'paramList' | 'enumeration' | 'custom';
   range: Range;
   container?: string;
+  /** `HOLD HANDLER` for handlers. */
+  detail?: string;
 }
 
 export interface FileSummary {
@@ -106,7 +108,8 @@ export function summarize(a: Analysis): FileSummary {
         pointRefs.push({ name: unit.point.name, range: unit.point.range, isDeclaration: false });
       }
       if (unit.name && unit.kind !== 'enumeration') {
-        symbols.push({ name: unit.name.text, kind: unit.kind as SymbolSummary['kind'], range: unit.headerRange });
+        const detail = unit.kind === 'handler' ? `${unit.handlerType} HANDLER` : undefined;
+        symbols.push({ name: unit.name.text, kind: unit.kind as SymbolSummary['kind'], range: unit.headerRange, detail });
       }
       if (unit.kind === 'sequence' && unit.name) {
         for (const p of unit.phases) {

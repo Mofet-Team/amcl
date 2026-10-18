@@ -243,6 +243,22 @@ export class WorkspaceIndex {
     }
   }
 
+  /** Every SEQUENCE and BLOCK, with the box of its bound point: `net/ucn:node`, `G…` for an inferred group. */
+  programList(): { uri: string; name: string; kind: 'sequence' | 'block'; point?: string; dialect?: string; range: Range; box?: string }[] {
+    const d = this.get();
+    const out: ReturnType<WorkspaceIndex['programList']> = [];
+    for (const [uri, s] of this.files) {
+      for (const p of s.programs) {
+        out.push({ uri, name: p.name, kind: p.kind, point: p.point, dialect: p.dialect, range: p.nameRange, box: p.point ? this.boxOfBound(p.point, d) : undefined });
+      }
+    }
+    return out;
+  }
+
+  summaryOf(uri: string): FileSummary | undefined {
+    return this.files.get(uri);
+  }
+
   symbols(): { uri: string; summary: FileSummary }[] {
     return [...this.files].map(([uri, summary]) => ({ uri, summary }));
   }
