@@ -12,7 +12,9 @@ import {
   InitializeParams,
   InitializeResult,
   Location,
+  Position,
   ProposedFeatures,
+  ResponseError,
   TextDocuments,
   TextDocumentSyncKind,
 } from 'vscode-languageserver/node';
@@ -52,7 +54,11 @@ import {
   LocateParams,
   SHARED_STORAGE_REQUEST,
   STORAGE_ACCESSES_REQUEST,
+  STORE_USES_REQUEST,
+  StoreUses,
 } from '../shared/programs';
+import { prepareRename, rename } from './features/rename';
+import { storeUses } from './features/stores';
 
 /** Settings under `amcl.*`, plus the encoding VS Code uses for CL files. */
 interface Settings {
@@ -265,6 +271,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       foldingRangeProvider: true,
       definitionProvider: true,
       referencesProvider: true,
+      renameProvider: { prepareProvider: true },
       documentHighlightProvider: true,
       documentFormattingProvider: true,
       codeActionProvider: { codeActionKinds: [CodeActionKind.QuickFix] },
@@ -611,6 +618,53 @@ connection.onRequest(LOCATE_REQUEST, ({ uri, kind, name }: LocateParams) => {
   if (kind === 'sequence' || kind === 'block') return summary.programs.find((p) => p.name.toUpperCase() === upper)?.nameRange.start ?? null;
   if (kind === 'local') return summary.storage.find((u) => u.local?.name.toUpperCase() === upper)?.local?.decl.start ?? null;
   return summary.symbols.find((s) => s.kind === kind && s.name.toUpperCase() === upper)?.range.start ?? null;
+});
+
+// ------------------------------------------------------------------ who stores, rename
+
+connection.onRequest(STORE_USES_REQUEST, ({ uri, position }: { uri: string; position: Position }): StoreUses | null => {
+  const files = new Map<string, string[]>();
+  const lineOf = (u: string, line: number) => {
+    if (!files.has(u)) {
+      const p = uriToPath(u);
+      files.set(u, (p && linesOf(p)) || []);
+    }
+    return files.get(u)![line] ?? '';
+  };
+  const doc = documents.get(uri);
+  if (doc && isListing(doc)) {
+    const view = viewOf(doc);
+    const at = view?.toSource(position);
+    return (view && at && storeUses(view.analysis, view.summary, index, at, lineOf)) ?? null;
+  }
+  return withDoc(uri, null, (_, a, s) => storeUses(a, s, index, position, lineOf) ?? null);
+});
+
+const READ_ONLY_LISTING = 'A listing is what the compiler printed: rename in the CL file.';
+
+connection.onPrepareRename(({ textDocument, position }) => {
+  const doc = documents.get(textDocument.uri);
+  if (doc && isListing(doc)) return new ResponseError(0, READ_ONLY_LISTING);
+  return withDoc(textDocument.uri, null, (_, a) => {
+    const at = prepareRename(a, index, position);
+    if (!at) return null;
+    return 'error' in at ? new ResponseError(0, at.error) : at;
+  });
+});
+
+connection.onRenameRequest(({ textDocument, position, newName }) => {
+  const doc = documents.get(textDocument.uri);
+  if (doc && isListing(doc)) return new ResponseError(0, READ_ONLY_LISTING);
+  return withDoc(textDocument.uri, null, (d, analysis, summary) => {
+    const result = rename({ uri: d.uri, version: d.version, analysis, summary, index }, position, newName);
+    if (!result) return null;
+    if ('error' in result) return new ResponseError(0, result.error);
+    if (result.elsewhere.length) {
+      const list = result.elsewhere.length > 5 ? `${result.elsewhere.slice(0, 5).join(', ')} and ${result.elsewhere.length - 5} more` : result.elsewhere.join(', ');
+      void connection.window.showInformationMessage(`Renamed in this file only. ${list} also call the same storage ${result.oldName}; they are left as they are.`);
+    }
+    return result.edit;
+  });
 });
 
 // ------------------------------------------------------------------ quick fixes

@@ -3,7 +3,7 @@
   "displayName": "amcl",
   "description": "Language support for Honeywell TDC 3000 / TPS Control Language (CL/HPM, CL/APM, CL/PM, CL/AM)",
   "icon": "icon.png",
-  "version": "0.8.1",
+  "version": "0.9.1",
   "publisher": "bazdalaz",
   "author": {
     "email": "bazdalaz@gmail.com",
@@ -50,7 +50,9 @@
         "editor.insertSpaces": true,
         "editor.tabSize": 4,
         "editor.detectIndentation": false,
-        "editor.rulers": [132],
+        "editor.rulers": [
+          132
+        ],
         "editor.quickSuggestions": {
           "other": true,
           "comments": false,
@@ -203,6 +205,11 @@
         "title": "Compare with Last Compile",
         "category": "CL",
         "icon": "$(git-compare)"
+      },
+      {
+        "command": "amcl.whoStores",
+        "title": "Who Stores to This",
+        "category": "CL"
       }
     ],
     "menus": {
@@ -218,6 +225,10 @@
         {
           "command": "amcl.compareWithCompile",
           "when": "editorLangId == cl"
+        },
+        {
+          "command": "amcl.whoStores",
+          "when": "editorLangId == cl || editorLangId == cl-listing"
         }
       ],
       "editor/title": [
@@ -228,6 +239,11 @@
         }
       ],
       "editor/context": [
+        {
+          "command": "amcl.whoStores",
+          "when": "editorLangId == cl || editorLangId == cl-listing",
+          "group": "navigation@5"
+        },
         {
           "command": "amcl.compareWithCompile",
           "when": "resourceLangId == cl && resourceScheme == file",

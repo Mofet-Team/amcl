@@ -53,6 +53,15 @@ export interface FileSummary {
   symbols: SymbolSummary[];
   /** `point.PARAM` accesses, counted: used to rank parameter completions by real use. */
   members: { point: string; param: string; count: number }[];
+  /** Each `point.PARAM` access of a point (not of a LOCAL or an argument), at the parameter, and whether it stores. */
+  memberRefs: MemberRef[];
+}
+
+export interface MemberRef {
+  point: string;
+  param: string;
+  range: Range;
+  written?: boolean;
 }
 
 export function summarize(a: Analysis): FileSummary {
@@ -61,12 +70,16 @@ export function summarize(a: Analysis): FileSummary {
   const storage: StorageUse[] = [];
   const symbols: SymbolSummary[] = [];
   const memberCounts = new Map<string, { point: string; param: string; count: number }>();
+  const memberRefs: MemberRef[] = [];
+  // Names that are not points: LOCALs, arguments, constants.
+  const notPoint = new Set<string>();
   // References to each LOCAL, keyed by the position of its defining name.
   const key = (r: Range) => `${r.start.line}:${r.start.character}`;
   const bySymbol = new Map<ClSymbol, Range[]>();
   for (const ref of a.binding.references) {
     const sym = ref.symbol;
     if (!sym) continue;
+    if (sym.kind !== 'external') notPoint.add(key(ref.ident.range));
     if (sym.kind === 'external') pointRefs.push({ name: sym.name, range: ref.ident.range, isDeclaration: ref.isDefinition });
     if (sym.kind === 'local') {
       const list = bySymbol.get(sym) ?? [];
@@ -102,6 +115,9 @@ export function summarize(a: Analysis): FileSummary {
     if (id) written.add(key(id.range));
     const use = slotUse(t);
     if (use) written.add(key(use.range));
+    // `P.SP` and `P.SO(2)`: the parameter stores.
+    const member = t.kind === 'member' ? t : t.kind === 'apply' && t.callee.kind === 'member' ? t.callee : undefined;
+    if (member) written.add(key(member.property.range));
   };
 
   walk(a.file, {
@@ -157,6 +173,7 @@ export function summarize(a: Analysis): FileSummary {
         const m = memberCounts.get(k);
         if (m) m.count++;
         else memberCounts.set(k, { point: e.object.id.name, param: e.property.name, count: 1 });
+        if (!notPoint.has(key(e.object.id.range))) memberRefs.push({ point: e.object.id.name, param: e.property.name, range: e.property.range });
       }
       const use = slotUse(e);
       if (!use) return;
@@ -165,6 +182,7 @@ export function summarize(a: Analysis): FileSummary {
     },
   });
   for (const u of storage) if (u.local) u.local.writes = u.local.refs.filter((r) => written.has(key(r)));
+  for (const m of memberRefs) if (written.has(key(m.range))) m.written = true;
 
-  return { programs, pointRefs, storage, symbols, members: [...memberCounts.values()] };
+  return { programs, pointRefs, storage, symbols, members: [...memberCounts.values()], memberRefs };
 }

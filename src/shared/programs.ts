@@ -111,3 +111,29 @@ export interface LocateParams {
 }
 
 export const LOCATE_REQUEST = 'amcl/locate';
+
+/** One access in Who Stores to This. */
+export interface StoreUse {
+  uri: string;
+  line: number;
+  character: number;
+  end: number;
+  /** The file name without `.cl`: copies of one program differ only in it. */
+  program: string;
+  /** The LOCAL it goes through, or the parameter of a point. */
+  name?: string;
+  /** The source line, trimmed. */
+  text: string;
+}
+
+/** Who stores to the storage element, point or parameter at a position, and who reads it. */
+export interface StoreUses {
+  /** What was looked up, such as `HPM 03/05 box FL(21)` or `REACT2.SP`. */
+  title: string;
+  stores: StoreUse[];
+  reads: StoreUse[];
+  /** The box Numeric or Flag point at a storage element: displays and other systems write it too. */
+  tag?: StoreUse & { descriptor?: string };
+}
+
+export const STORE_USES_REQUEST = 'amcl/storeUses';

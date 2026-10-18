@@ -4,6 +4,7 @@ import { commands, ExtensionContext, Uri, window, workspace } from 'vscode';
 import { ProgramsView } from './programsView';
 import { StorageView } from './storageView';
 import { registerCompare } from './compare';
+import { registerWhoStores } from './stores';
 import { registerOpenEntry } from './openEntry';
 import { PROGRAMS_CHANGED } from '../shared/programs';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
@@ -58,6 +59,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     }),
   );
   registerCompare(context, client);
+  registerWhoStores(context, client);
   registerOpenEntry(context, client);
   await client.start();
   // The view shows in workspaces with CL programs, and refreshes when the server's index changes.

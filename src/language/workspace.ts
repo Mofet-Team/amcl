@@ -287,6 +287,18 @@ export class WorkspaceIndex {
     return n;
   }
 
+  /** Every `point.PARAM` access of a point in the workspace; of one parameter when `param` is given. */
+  memberUses(point: string, param?: string): (Location & { param: string; written?: boolean })[] {
+    const name = point.toUpperCase();
+    const out: (Location & { param: string; written?: boolean })[] = [];
+    for (const [uri, s] of this.files) {
+      for (const m of s.memberRefs ?? []) {
+        if (m.point === name && (!param || m.param === param)) out.push({ uri, range: m.range, param: m.param, written: m.written });
+      }
+    }
+    return out;
+  }
+
   summaryOf(uri: string): FileSummary | undefined {
     return this.files.get(uri);
   }
