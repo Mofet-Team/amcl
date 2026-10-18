@@ -2,6 +2,7 @@ import { Event, EventEmitter, MarkdownString, ThemeIcon, TreeDataProvider, TreeI
 import { LanguageClient } from 'vscode-languageclient/node';
 import { SHARED_STORAGE_REQUEST, STORAGE_ACCESSES_REQUEST, StorageAccess, StorageSlot } from '../shared/programs';
 import { openEntryCommand } from './openEntry';
+import { UNKNOWN_LCN, UNKNOWN_LCN_TOOLTIP } from './programsView';
 
 type Node =
   | { kind: 'lcn'; name: string; slots: StorageSlot[] }
@@ -36,7 +37,7 @@ export class StorageView implements TreeDataProvider<Node> {
       if (lcns.size <= 1) return this.hpms(all);
       return [...lcns]
         .sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)))
-        .map(([name, slots]) => ({ kind: 'lcn', name: name ? `LCN ${name}` : 'Other', slots }));
+        .map(([name, slots]) => ({ kind: 'lcn', name: name ? `LCN ${name}` : UNKNOWN_LCN, slots }));
     }
     switch (node.kind) {
       case 'lcn':
@@ -77,8 +78,10 @@ export class StorageView implements TreeDataProvider<Node> {
       case 'hpm':
       case 'owner': {
         const item = new TreeItem(node.name, TreeItemCollapsibleState.Collapsed);
-        item.iconPath = new ThemeIcon(node.kind === 'lcn' ? 'globe' : node.kind === 'hpm' ? 'server' : node.name.startsWith('Box') ? 'database' : 'symbol-module');
+        const unknown = node.kind === 'lcn' && node.name === UNKNOWN_LCN;
+        item.iconPath = new ThemeIcon(unknown ? 'question' : node.kind === 'lcn' ? 'globe' : node.kind === 'hpm' ? 'server' : node.name.startsWith('Box') ? 'database' : 'symbol-module');
         item.description = `${node.slots.length}`;
+        if (unknown) item.tooltip = UNKNOWN_LCN_TOOLTIP;
         return item;
       }
       case 'slot': {

@@ -4,21 +4,24 @@ import { WorkspaceIndex } from '../language/workspace';
 import { ProgramItem, ProgramPart, ProgramStatus, StorageAccess, StorageSlot } from '../shared/programs';
 import { compiledSource, ListingFile } from './listings';
 
-/** The LCN and HPM label of a box key (`net/ucn:node`, or `G…` for a group the database does not place). */
-export function placeBox(box: string | undefined): { lcn?: string; hpm: string; hpmOrder: string } {
+/**
+ * The LCN and HPM label of a box key (`net/ucn:node`, or `G…` for a group the database does not
+ * place). `network` is the LCN of the program's file, for boxes the database does not place.
+ */
+export function placeBox(box: string | undefined, network?: string): { lcn?: string; hpm: string; hpmOrder: string } {
   const m = box && /^(.*)\/(\d+):(\d+)$/.exec(box);
   const two = (n: string) => n.padStart(2, '0');
-  if (m) return { lcn: m[1] || undefined, hpm: `HPM ${two(m[2])}/${two(m[3])}`, hpmOrder: `0 ${m[2].padStart(4, '0')} ${m[3].padStart(4, '0')}` };
+  if (m) return { lcn: m[1] || network, hpm: `HPM ${two(m[2])}/${two(m[3])}`, hpmOrder: `0 ${m[2].padStart(4, '0')} ${m[3].padStart(4, '0')}` };
   // Placed together by shared storage, but not in the point database.
-  if (box?.startsWith('G')) return { hpm: 'HPM not in the point database', hpmOrder: '1' };
-  return { hpm: 'No bound point', hpmOrder: '3' };
+  if (box?.startsWith('G')) return { lcn: network, hpm: 'HPM not in the point database', hpmOrder: '1' };
+  return { lcn: network, hpm: 'No bound point', hpmOrder: '3' };
 }
 
 /** Every program, with the LCN and HPM it runs in, for the CL Programs view. */
 export function programItems(index: WorkspaceIndex): ProgramItem[] {
   return index.programList().map((p) => {
-    // CL/AM blocks run in an Application Module, not in an HPM.
-    const { lcn, hpm, hpmOrder } = p.kind === 'block' ? { lcn: undefined, hpm: 'CL/AM', hpmOrder: '2' } : placeBox(p.box);
+    // CL/AM blocks run in an Application Module, on the LCN of the points they use, not in an HPM.
+    const { lcn, hpm, hpmOrder } = p.kind === 'block' ? { lcn: p.fileNetwork, hpm: 'CL/AM', hpmOrder: '2' } : placeBox(p.box, p.fileNetwork);
     return {
       uri: p.uri,
       name: p.name,
@@ -100,11 +103,13 @@ export function sharedStorage(index: WorkspaceIndex): StorageSlot[] {
     const param = parts[parts.length - 2];
     const owner = parts.slice(1, -2).join(':');
     const box = kind === 'BOX' ? owner : pointBox(owner);
+    // A box the database does not place: the LCN of the files that use it.
+    const network = accesses.map((e) => index.networkOfFile(e.uri)).find(Boolean);
     const writers = new Set(accesses.filter((e) => e.written || (e.local?.writes?.length ?? 0) > 0).map((e) => slotOf(e.uri)));
     const names = [...new Set([...accesses.flatMap((e) => (e.local ? [e.local.name] : [])), ...entries.flatMap((e) => (e.point ? [e.point.name] : []))])];
     out.push({
       key,
-      ...placeBox(box),
+      ...placeBox(box, network),
       ownerKind: kind === 'BOX' ? 'box' : kind === 'ARR' ? 'array' : 'module',
       owner: kind === 'BOX' ? 'Box' : owner,
       param,

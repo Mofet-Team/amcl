@@ -27,6 +27,10 @@ type Node =
   | { kind: 'program'; program: ProgramItem; status?: ProgramStatus }
   | { kind: 'part'; uri: string; part: ProgramPart };
 
+export const UNKNOWN_LCN = 'LCN not known';
+export const UNKNOWN_LCN_TOOLTIP =
+  'Neither the bound point nor any point these files use is in the point database, so their LCN is not known. CL/AM blocks and programs of HPMs missing from the database export end up here.';
+
 const PART_ICON: Record<ProgramPart['kind'], string> = {
   phase: 'symbol-class',
   step: 'symbol-method',
@@ -63,7 +67,7 @@ export class ProgramsView implements TreeDataProvider<Node> {
       if (lcns.size <= 1) return this.hpms(all);
       return [...lcns]
         .sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)))
-        .map(([name, programs]) => ({ kind: 'lcn', name: name ? `LCN ${name}` : 'Other', programs }));
+        .map(([name, programs]) => ({ kind: 'lcn', name: name ? `LCN ${name}` : UNKNOWN_LCN, programs }));
     }
     switch (node.kind) {
       case 'lcn':
@@ -96,8 +100,9 @@ export class ProgramsView implements TreeDataProvider<Node> {
     switch (node.kind) {
       case 'lcn': {
         const item = new TreeItem(node.name, TreeItemCollapsibleState.Collapsed);
-        item.iconPath = new ThemeIcon('globe');
+        item.iconPath = new ThemeIcon(node.name === UNKNOWN_LCN ? 'question' : 'globe');
         item.description = `${node.programs.length} programs`;
+        if (node.name === UNKNOWN_LCN) item.tooltip = UNKNOWN_LCN_TOOLTIP;
         return item;
       }
       case 'hpm': {

@@ -245,16 +245,34 @@ export class WorkspaceIndex {
     }
   }
 
-  /** Every SEQUENCE and BLOCK, with the box of its bound point: `net/ucn:node`, `G…` for an inferred group. */
-  programList(): { uri: string; name: string; kind: 'sequence' | 'block'; point?: string; dialect?: string; range: Range; box?: string }[] {
+  /**
+   * Every SEQUENCE and BLOCK, with the box of its bound point (`net/ucn:node`, `G…` for an
+   * inferred group) and the LCN of the points its file references, which places programs whose
+   * bound point the database lacks, such as CL/AM blocks.
+   */
+  programList(): { uri: string; name: string; kind: 'sequence' | 'block'; point?: string; dialect?: string; range: Range; box?: string; fileNetwork?: string }[] {
     const d = this.get();
     const out: ReturnType<WorkspaceIndex['programList']> = [];
     for (const [uri, s] of this.files) {
       for (const p of s.programs) {
-        out.push({ uri, name: p.name, kind: p.kind, point: p.point, dialect: p.dialect, range: p.nameRange, box: p.point ? this.boxOfBound(p.point, d) : undefined });
+        out.push({
+          uri,
+          name: p.name,
+          kind: p.kind,
+          point: p.point,
+          dialect: p.dialect,
+          range: p.nameRange,
+          box: p.point ? this.boxOfBound(p.point, d) : undefined,
+          fileNetwork: d.networkOfFile.get(uri) || undefined,
+        });
       }
     }
     return out;
+  }
+
+  /** The LCN of the points a file references, when the workspace has several LCNs. */
+  networkOfFile(uri: string): string | undefined {
+    return this.get().networkOfFile.get(uri) || undefined;
   }
 
   /** Every storage key, with each LOCAL, direct access and database point at it. */

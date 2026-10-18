@@ -233,6 +233,12 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
+### Unreleased
+
+- CL/AM blocks, and programs of HPMs missing from the point database, are listed under the LCN
+  of the points they use. Programs whose files use no point the database knows are grouped
+  under "LCN not known".
+
 ### 0.7.0
 
 - **CL Programs** view: every program by LCN and HPM, with its phases and steps, handlers and

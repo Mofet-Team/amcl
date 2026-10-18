@@ -67,3 +67,17 @@ describe('several LCNs', () => {
     expect(index.networkOf(index.point('P1')!)).toBe(index.networkOf(index.point('P2')!));
   });
 });
+
+describe('several LCNs: programs the database does not place', () => {
+  it('puts a CL/AM block on the LCN of the points it uses, and leaves one that uses none unplaced', async () => {
+    const { programItems } = await import('../src/server/programs');
+    const { index } = build(true);
+    index.setFile('AM1.CL', summarize(analyze('BLOCK W1 (POINT AM1; AT GENERAL)\nEXTERNAL VALVEB\nIF VALVEB.PV = OPEN THEN EXIT\nEND W1')));
+    index.setFile('AM2.CL', summarize(analyze('BLOCK W2 (POINT AM2; AT GENERAL)\nEXIT\nEND W2')));
+    const items = programItems(index);
+    expect(items.find((p) => p.name === 'W1')).toMatchObject({ lcn: 'B', hpm: 'CL/AM' });
+    expect(items.find((p) => p.name === 'W2')).toMatchObject({ hpm: 'CL/AM' });
+    expect(items.find((p) => p.name === 'W2')!.lcn).toBeUndefined();
+    expect(items.find((p) => p.name === 'SEQA')).toMatchObject({ lcn: 'A', hpm: 'HPM 01/09' });
+  });
+});
