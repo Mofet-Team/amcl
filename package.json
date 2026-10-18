@@ -3,7 +3,7 @@
   "displayName": "amcl",
   "description": "Language support for Honeywell TDC 3000 / TPS Control Language (CL/HPM, CL/APM, CL/PM, CL/AM)",
   "icon": "icon.png",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "publisher": "bazdalaz",
   "author": {
     "email": "bazdalaz@gmail.com",
@@ -134,6 +134,7 @@
               "call-depth",
               "wait-absolute",
               "local-location",
+              "local-alias",
               "local-type",
               "array-bounds",
               "external-order",

@@ -54,6 +54,8 @@ class Linter {
   private readonly undeclared = new Set<Ident>();
   /** Subroutines of the file by name, for checking CALLs. */
   private readonly subroutines = new Map<string, Extract<Unit, { kind: 'subroutine' }>>();
+  /** LOCALs mapped onto each point's variables, by `point|param`, with the elements they cover. */
+  private readonly mapped = new Map<string, { from: number; to: number; name: Ident; low?: number }[]>();
 
   constructor(
     private readonly file: SourceFile,
@@ -943,11 +945,42 @@ class Linter {
         this.report(at.index.range, 'local-location', 'The location index must be an integer', Severity.Error);
       }
       if (at.point && at.point.name !== bound && unit.kind === 'sequence') this.externalFirst(unit, at.point, d.range);
+      if (index !== undefined && Number.isInteger(index)) {
+        const size = range && range[0] !== undefined && range[1] !== undefined && range[0] < range[1] ? range[1] - range[0] + 1 : 1;
+        // An array's lower bound, to name its elements; unknown bounds count it as one element.
+        const low = t?.array ? (size > 1 ? range![0] : 1) : undefined;
+        this.alias(`${at.point?.name ?? bound ?? ''}|${param}`, param, index, index + size - 1, d.names[0], low);
+      }
       if (d.names.length > 1) {
         // Two LOCALs on one location are allowed (aliases); one LOCAL naming several variables is not.
         this.report(d.names[1].range, 'local-location', `Only one variable per LOCAL ... AT: ${d.names.map((n) => n.text).join(', ')} would all be ${at.param.text}${at.index ? '(...)' : ''}`, Severity.Error);
       }
     }
+  }
+
+  /**
+   * Two LOCALs on one element are aliases: the compiler accepts them, but a store through one
+   * changes the other, which is easy to miss when they are far apart. A name for an element of an
+   * array is usually meant, so it is only noted.
+   */
+  private alias(key: string, param: string, from: number, to: number, name: Ident, low: number | undefined): void {
+    const list = this.mapped.get(key) ?? [];
+    const other = list.find((x) => x.from <= to && from <= x.to);
+    if (other) {
+      const lo = Math.max(from, other.from);
+      const hi = Math.min(to, other.to);
+      const where = lo === hi ? `${param}(${lo})` : `${param}(${lo}..${hi})`;
+      const what =
+        other.low === undefined ? `LOCAL ${other.name.text}` : lo === hi ? `${other.name.text}(${lo - other.from + other.low})` : `in array ${other.name.text}`;
+      this.report(
+        name.range,
+        'local-alias',
+        `${where} is also ${what} (line ${other.name.range.start.line + 1}): a store to either changes both`,
+        low !== undefined || other.low !== undefined ? Severity.Information : Severity.Warning,
+      );
+    }
+    list.push({ from, to, name, low });
+    this.mapped.set(key, list);
   }
 
   /** LOCALs on another point follow the EXTERNAL that names it [HP27-610 §2.6.2.2]. */
