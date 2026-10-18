@@ -17,8 +17,44 @@ export function placeBox(box: string | undefined, network?: string): { lcn?: str
   return { lcn: network, hpm: 'No bound point', hpmOrder: '3' };
 }
 
+const folderOf = (uri: string) => decodeURIComponent(uri.replace(/\/[^/]*$/, ''));
+
+/**
+ * The LCN of most programs placed in each folder, where one LCN leads: plant units keep their
+ * programs in a folder of their own, and a unit is on one LCN.
+ */
+function folderNetworks(items: { uri: string; lcn?: string }[]): Map<string, string> {
+  const counts = new Map<string, Map<string, number>>();
+  for (const p of items) {
+    if (!p.lcn) continue;
+    const c = counts.get(folderOf(p.uri)) ?? new Map<string, number>();
+    c.set(p.lcn, (c.get(p.lcn) ?? 0) + 1);
+    counts.set(folderOf(p.uri), c);
+  }
+  const out = new Map<string, string>();
+  for (const [folder, c] of counts) {
+    const [first, second] = [...c].sort((a, b) => b[1] - a[1]);
+    if (!second || first[1] > second[1]) out.set(folder, first[0]);
+  }
+  return out;
+}
+
 /** Every program, with the LCN and HPM it runs in, for the CL Programs view. */
 export function programItems(index: WorkspaceIndex): ProgramItem[] {
+  const items = placedPrograms(index);
+  const byFolder = folderNetworks(items);
+  for (const p of items) {
+    if (p.lcn) continue;
+    const lcn = byFolder.get(folderOf(p.uri));
+    if (lcn) {
+      p.lcn = lcn;
+      p.lcnByFolder = folderOf(p.uri).replace(/^.*\//, '');
+    }
+  }
+  return items;
+}
+
+function placedPrograms(index: WorkspaceIndex): ProgramItem[] {
   return index.programList().map((p) => {
     // CL/AM blocks run in an Application Module, on the LCN of the points they use, not in an HPM.
     const { lcn, hpm, hpmOrder } = p.kind === 'block' ? { lcn: p.fileNetwork, hpm: 'CL/AM', hpmOrder: '2' } : placeBox(p.box, p.fileNetwork);
@@ -82,6 +118,8 @@ export function programStatus(uri: string, files: ListingFile[], lines: string[]
  * other programs, and array point elements. Grouped like programs, by the HPM they are in.
  */
 export function sharedStorage(index: WorkspaceIndex): StorageSlot[] {
+  // Files placed by their folder, for storage the database does not place.
+  const lcnOfFile = new Map(programItems(index).flatMap((p) => (p.lcn ? [[p.uri, p.lcn] as const] : [])));
   const boxOfModule = new Map<string, string | undefined>();
   for (const p of index.programList()) if (p.point && !boxOfModule.has(p.point)) boxOfModule.set(p.point, p.box);
   const pointBox = (name: string) => {
@@ -104,7 +142,7 @@ export function sharedStorage(index: WorkspaceIndex): StorageSlot[] {
     const owner = parts.slice(1, -2).join(':');
     const box = kind === 'BOX' ? owner : pointBox(owner);
     // A box the database does not place: the LCN of the files that use it.
-    const network = accesses.map((e) => index.networkOfFile(e.uri)).find(Boolean);
+    const network = accesses.map((e) => index.networkOfFile(e.uri)).find(Boolean) ?? accesses.map((e) => lcnOfFile.get(e.uri)).find(Boolean);
     const writers = new Set(accesses.filter((e) => e.written || (e.local?.writes?.length ?? 0) > 0).map((e) => slotOf(e.uri)));
     const names = [...new Set([...accesses.flatMap((e) => (e.local ? [e.local.name] : [])), ...entries.flatMap((e) => (e.point ? [e.point.name] : []))])];
     out.push({

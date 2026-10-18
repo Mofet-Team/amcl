@@ -11,6 +11,8 @@ export interface ProgramItem {
   character: number;
   /** LCN name, when the workspace has several. */
   lcn?: string;
+  /** Set when the LCN is that of most other programs in the same folder, nothing else giving one. */
+  lcnByFolder?: string;
   /** `HPM 01/09`, or a group for programs the point database does not place. */
   hpm: string;
   /** Sorts HPMs by UCN and node. */

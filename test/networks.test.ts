@@ -81,3 +81,28 @@ describe('several LCNs: programs the database does not place', () => {
     expect(items.find((p) => p.name === 'SEQA')).toMatchObject({ lcn: 'A', hpm: 'HPM 01/09' });
   });
 });
+
+describe('several LCNs: placing by folder', () => {
+  it('gives a program nothing places the LCN most programs in its folder are on, and says so', async () => {
+    const { programItems } = await import('../src/server/programs');
+    const { index } = build(true);
+    const prog = (seq: string, valve: string) => summarize(analyze(program(seq, valve)));
+    const block = (name: string) => summarize(analyze(`BLOCK ${name} (POINT ${name}P; AT GENERAL)\nEXIT\nEND ${name}`));
+    index.setFile('file:///u1/A1.CL', prog('SEQA', 'VALVEA'));
+    index.setFile('file:///u1/A2.CL', prog('SEQA', 'VALVEA'));
+    index.setFile('file:///u1/B1.CL', prog('SEQB', 'VALVEB'));
+    index.setFile('file:///u1/AM.CL', block('W1'));
+    index.setFile('file:///u2/A.CL', prog('SEQA', 'VALVEA'));
+    index.setFile('file:///u2/B.CL', prog('SEQB', 'VALVEB'));
+    index.setFile('file:///u2/AM.CL', block('W2'));
+    index.setFile('file:///u3/AM.CL', block('W3'));
+    const items = programItems(index);
+    // Two of the three placed programs in u1 are on LCN A.
+    expect(items.find((p) => p.name === 'W1')).toMatchObject({ lcn: 'A', lcnByFolder: 'u1' });
+    // u2 is split evenly, and u3 has nothing placed: no guess.
+    expect(items.find((p) => p.name === 'W2')!.lcn).toBeUndefined();
+    expect(items.find((p) => p.name === 'W3')!.lcn).toBeUndefined();
+    // Programs placed by their own points are not marked.
+    expect(items.filter((p) => p.uri.endsWith('/A1.CL'))[0].lcnByFolder).toBeUndefined();
+  });
+});

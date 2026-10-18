@@ -236,8 +236,8 @@ Bug reports are welcome!
 ### Unreleased
 
 - CL/AM blocks, and programs of HPMs missing from the point database, are listed under the LCN
-  of the points they use. Programs whose files use no point the database knows are grouped
-  under "LCN not known".
+  of the points they use; failing that, under the LCN most programs in their folder are on,
+  marked as a guess in the tooltip. The rest are grouped under "LCN not known".
 
 ### 0.7.0
 

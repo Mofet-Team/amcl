@@ -29,7 +29,7 @@ type Node =
 
 export const UNKNOWN_LCN = 'LCN not known';
 export const UNKNOWN_LCN_TOOLTIP =
-  'Neither the bound point nor any point these files use is in the point database, so their LCN is not known. CL/AM blocks and programs of HPMs missing from the database export end up here.';
+  'Neither the bound point nor any point these files use is in the point database, and no other program in their folder is placed, so their LCN is not known.';
 
 const PART_ICON: Record<ProgramPart['kind'], string> = {
   phase: 'symbol-class',
@@ -138,6 +138,7 @@ export class ProgramsView implements TreeDataProvider<Node> {
         : new ThemeIcon('symbol-module');
     const file = workspace.asRelativePath(Uri.parse(p.uri));
     const lines = [`**${p.name}** · ${p.kind === 'block' ? 'BLOCK' : `SEQUENCE${p.dialect ? ` (${p.dialect})` : ''}`}`, '', `Point ${p.point ?? '—'} · ${p.hpm}${p.lcn ? ` (LCN ${p.lcn})` : ''}`, '', `\`${file}\``];
+    if (p.lcnByFolder) lines.push('', `LCN ${p.lcn} is a guess: most programs in folder ${p.lcnByFolder} are on it, and nothing in this file places it.`);
     if (status?.errors) lines.push('', `The .LE beside it lists ${status.errors} error${status.errors === 1 ? '' : 's'} from the last compile.`);
     else if (status?.changed) lines.push('', 'The source differs from its listing: changed since the last compile.');
     else if (status?.noListing) lines.push('', 'No listing beside it.');
