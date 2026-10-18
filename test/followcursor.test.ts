@@ -21,10 +21,15 @@ describe('outline ranges for Follow Cursor', () => {
   const at = (needle: string, occurrence = 0) => pathAt(syms, pos(text, needle, occurrence));
 
   it('selects the phase, step and label the cursor is in', () => {
-    expect(at('SET NBATCH = NBATCH + 1')).toEqual(['REACT1', 'PREPARE', 'ST01']);
-    expect(at('SEND (WAIT)')).toEqual(['REACT1', 'PREPARE', 'ST01', 'HOT']);
-    expect(at('CALL CHECK')).toEqual(['REACT1', 'PREPARE', 'ST02', 'LOOP1']);
-    expect(at('START PUMP1')).toEqual(['REACT1', 'HEAT']);
+    expect(at('SET NBATCH = NBATCH + 1')).toEqual(['PREPARE', 'ST01']);
+    expect(at('SEND (WAIT)')).toEqual(['PREPARE', 'ST01', 'HOT']);
+    expect(at('CALL CHECK')).toEqual(['PREPARE', 'ST02', 'LOOP1']);
+    expect(at('START PUMP1')).toEqual(['HEAT']);
+  });
+
+  it('lists phases beside their sequence, which keeps its heading and declarations', () => {
+    expect(syms.map((s) => s.name)).toEqual(['REACT1', 'PREPARE', 'HEAT', 'HLD1', 'SHDN1', 'CHECK']);
+    expect(at('SEQUENCE REACT1')).toEqual(['REACT1']);
   });
 
   it('selects declarations, handlers and subroutines', () => {

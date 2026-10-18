@@ -55,8 +55,26 @@ const LOCAL_GROUPS = [
  * order; with them, each program also lists the box timers it uses.
  */
 export function documentSymbols(symbols: ClSymbol[], units?: Unit[], unused = new Set<ClSymbol>()): DocumentSymbol[] {
-  return symbols.map((sym, i) => toDocumentSymbol(sym, unused, units?.[i]));
+  return symbols.flatMap((sym, i) => liftPhases(sym, toDocumentSymbol(sym, unused, units?.[i])));
 }
+
+/**
+ * Phases beside their sequence rather than inside it, so they show while the outline starts
+ * collapsed (VS Code cannot open one entry by default). The sequence keeps its heading and
+ * declarations; its range ends before the first phase, so Follow Cursor selects the phase.
+ */
+function liftPhases(sym: ClSymbol, doc: DocumentSymbol): DocumentSymbol[] {
+  if (sym.kind !== 'sequence') return [doc];
+  const phaseRanges = new Set(sym.children.filter((c) => c.kind === 'phase').map((c) => c.ident.range));
+  const phases = (doc.children ?? []).filter((c) => phaseRanges.has(c.selectionRange));
+  if (!phases.length) return [doc];
+  const first = phases[0].range.start;
+  const end = first.line > doc.range.start.line ? { line: first.line - 1, character: LINE_END } : first;
+  return [{ ...doc, range: { start: doc.range.start, end }, children: (doc.children ?? []).filter((c) => !phases.includes(c)) }, ...phases];
+}
+
+/** A character position past the end of any CL line; clients clamp it to the line's end. */
+const LINE_END = 10000;
 
 function toDocumentSymbol(sym: ClSymbol, unused: Set<ClSymbol>, unit?: Unit): DocumentSymbol {
   const externals = sym.children.filter((c) => c.kind === 'external');

@@ -14,7 +14,7 @@ const tree = (syms: DocumentSymbol[]): unknown[] =>
   syms.map((s) => (s.children?.length ? { [s.name]: tree(s.children) } : s.name));
 
 describe('outline', () => {
-  it('nests phases, steps, labels and groups long EXTERNAL and LOCAL lists', () => {
+  it('lists phases beside the sequence, nests steps and labels, and groups long EXTERNAL and LOCAL lists', () => {
     const a = analyze(fixture('reactor.cl'));
     const syms = documentSymbols(a.binding.symbols, a.file.units);
     expect(tree(syms)).toEqual([
@@ -31,10 +31,10 @@ describe('outline', () => {
               { Constants: ['TMAX'] },
             ],
           },
-          { PREPARE: [{ ST01: ['HOT'] }, { ST02: ['LOOP1'] }] },
-          'HEAT',
         ],
       },
+      { PREPARE: [{ ST01: ['HOT'] }, { ST02: ['LOOP1'] }] },
+      'HEAT',
       'HLD1',
       'SHDN1',
       { CHECK: ['N', 'F'] },

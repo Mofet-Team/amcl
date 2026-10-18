@@ -217,6 +217,12 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
+### Unreleased
+
+- Outline: phases are listed beside their sequence, so they show while the outline starts
+  collapsed; entries name their CL kind (SEQUENCE, PHASE, STEP, SUBROUTINE, HOLD HANDLER...),
+  and a phase shows the handlers its heading enables.
+
 ### 0.6.1
 
 - Formatting, on request only, in each file's own style: each kind of line goes to the column

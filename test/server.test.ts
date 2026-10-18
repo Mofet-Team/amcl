@@ -97,7 +97,7 @@ describe.skipIf(!fs.existsSync(serverPath))('language server over stdio', () => 
 
   it('answers documentSymbol, definition and foldingRange', async () => {
     const symbols = await client.request('textDocument/documentSymbol', { textDocument: { uri } });
-    expect(symbols.map((s: any) => s.name)).toEqual(['REACT1', 'HLD1', 'SHDN1', 'CHECK']);
+    expect(symbols.map((s: any) => s.name)).toEqual(['REACT1', 'PREPARE', 'HEAT', 'HLD1', 'SHDN1', 'CHECK']);
     // Line 23 is `      CALL CHECK (NBATCH, FAGIT)`; character 12 is inside CHECK. The inserted
     // GOTO line moves the subroutine heading from line 48 to 49.
     const def = await client.request('textDocument/definition', { textDocument: { uri }, position: { line: 23, character: 12 } });
@@ -220,11 +220,10 @@ describe.skipIf(!fs.existsSync(serverPath))('language server: compiler listings'
     const uri = uriOf('HEATER.LS');
     client.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'cl-listing', version: 1, text: fixture('listing/HEATER.LS') } });
     const symbols = await client.request('textDocument/documentSymbol', { textDocument: { uri } });
-    expect(symbols.map((s: any) => s.name)).toEqual(['HEATER', 'Warnings (1)', 'Notes (1)']);
-    // The sequence spans listing lines 3 (SEQUENCE) to 15 (END); its phase RUN is on line 10.
+    expect(symbols.map((s: any) => s.name)).toEqual(['HEATER', 'RUN', 'Warnings (1)', 'Notes (1)']);
+    // The sequence heading is on listing line 3; its phase RUN, listed beside it, on line 10.
     expect(symbols[0].range.start.line).toBe(3);
-    const phase = JSON.stringify(symbols[0]).includes('"RUN"');
-    expect(phase).toBe(true);
+    expect(symbols[1].range.start.line).toBe(10);
     // Line 14 is `     6      12      SET TEMP = TIC1.PV`; TEMP starts at column 14 + 8.
     const def = await client.request('textDocument/definition', { textDocument: { uri }, position: { line: 14, character: 23 } });
     expect(def).toEqual([{ uri, range: { start: { line: 9, character: 24 }, end: { line: 9, character: 28 } } }]);
