@@ -430,3 +430,10 @@ describe('lint: undefined names on the right of =', () => {
     expect([3, 4, 5]).toContain(errors[0].range.start.line);
   });
 });
+
+describe('lint: indices of stored-to parameters', () => {
+  it('checks the index of an indexed point in a SET target', () => {
+    const found = check('SEQUENCE S (HPM; POINT S)\nEXTERNAL ARR\nLOCAL I AT NN(1)\nPHASE P\nSET I = 1\nSET ARR(I).PV = 1\nSET ARR(QWER).PV = 2\nEND S').filter((m) => m.startsWith('undefined'));
+    expect(found).toEqual(['undefined: Undefined name QWER: not a LOCAL, constant, EXTERNAL or argument']);
+  });
+});

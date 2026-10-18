@@ -565,6 +565,8 @@ class Linter {
       if (t.callee.kind === 'name') this.checkName(t.callee.id, bound, new Set());
       t.args.forEach((a) => this.checkExpr(a, bound));
     }
+    // `ARR(I).PV`: the point is checked where it is used; its index is a value.
+    if (t.kind === 'member' && t.object.kind === 'apply') t.object.args.forEach((a) => this.checkExpr(a, bound));
   }
 
   /** Every name in a value expression, except a bare name compared with a point parameter. */
