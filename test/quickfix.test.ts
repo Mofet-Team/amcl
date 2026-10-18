@@ -127,3 +127,24 @@ describe('quick fixes: removing from lists keeps comments', () => {
     expect(fixed(text, 'unused', 'SPARE')).toBe(seq('   EXTERNAL XV1\n&              -- old valve', '   SET XV1.OP = ON'));
   });
 });
+
+describe('undeclared SET and READ targets', () => {
+  const text = (stmt: string) => seq('   EXTERNAL XV1\n   LOCAL F: LOGICAL AT FL(1)', `   SET F = ON\n   ${stmt}`);
+  const titles = (stmt: string) => {
+    const a = analyze(text(stmt));
+    const d = lint(a.file, a.binding).find((x) => x.code === 'undefined');
+    return d ? quickFixes(text(stmt).split('\n'), a, d).map((f) => f.title) : [];
+  };
+
+  it('reports them and declares them by the value stored', () => {
+    expect(titles('SET NTEST = ON')).toEqual(['Declare NTEST as LOCAL: LOGICAL AT FL(2)']);
+    expect(titles('SET NTEST = F AND XV1.PV = ON')).toEqual(['Declare NTEST as LOCAL: LOGICAL AT FL(2)']);
+    expect(titles('SET NTEST = 10')).toEqual(['Declare NTEST as LOCAL AT NN(1)']);
+    expect(titles('READ NTEST FROM XV1.PV')).toEqual(['Declare NTEST as LOCAL AT NN(1)']);
+  });
+
+  it('accepts the program\'s own point\'s parameters', () => {
+    expect(titles('SET NN(5) = 1')).toEqual([]);
+    expect(titles('SET FL(3) = ON')).toEqual([]);
+  });
+});

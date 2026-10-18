@@ -522,6 +522,9 @@ class Linter {
         } else if (s.value.kind !== 'name') strict(s.value);
         break;
       }
+      case 'read':
+        s.targets.forEach((t) => this.checkTarget(t, bound));
+        break;
       case 'if':
         s.branches.forEach((b) => strict(b.condition));
         break;
@@ -555,9 +558,13 @@ class Linter {
     return out;
   }
 
+  /** A store's target: a declared name, or a parameter of the program's own point (`NN(5)`); and its indices. */
   private checkTarget(t: Expr, bound: string | undefined): void {
-    if (t.kind === 'apply') t.args.forEach((a) => this.checkExpr(a, bound));
-    if (t.kind === 'member') this.checkTarget(t.object, bound);
+    if (t.kind === 'name') this.checkName(t.id, bound, new Set());
+    if (t.kind === 'apply') {
+      if (t.callee.kind === 'name') this.checkName(t.callee.id, bound, new Set());
+      t.args.forEach((a) => this.checkExpr(a, bound));
+    }
   }
 
   /** Every name in a value expression, except a bare name compared with a point parameter. */

@@ -205,6 +205,20 @@ function usedAsLogical(analysis: Analysis, range: Range): boolean {
     const d = id && analysis.binding.references.find((r) => r.ident === id)?.symbol?.declaration;
     return d?.kind === 'local' && (d.type?.kind === 'named' ? d.type.name.name === 'LOGICAL' || d.type.name.name === 'FLAG' : d.type?.kind === 'states');
   };
+  /** `t` is the name at `range`, alone or indexed. */
+  const targetIs = (t: Expr) => {
+    const id = t.kind === 'name' ? t.id : t.kind === 'apply' && t.callee.kind === 'name' ? t.callee.id : undefined;
+    return !!id && sameRange(id.range, range);
+  };
+  /** Whether a value is logical: ON, OFF, a condition, NOT, or a LOGICAL LOCAL. */
+  const logicalValue = (x: Expr): boolean => {
+    if (x.kind === 'paren') return logicalValue(x.inner);
+    if (x.kind === 'unary') return x.op === 'NOT';
+    if (x.kind === 'binary') return ['AND', 'OR', 'XOR', '=', '<>', '<', '<=', '>', '>='].includes(x.op);
+    if (x.kind === 'in') return true;
+    if (x.kind === 'name') return isOnOff(x) || logicalLocal(x);
+    return false;
+  };
   let result: boolean | undefined;
   const visit = (s: Statement) => {
     if (result !== undefined) return;
@@ -220,6 +234,8 @@ function usedAsLogical(analysis: Analysis, range: Range): boolean {
         result ??= find(s.value, true);
         break;
       case 'set':
+        // The target itself: logical when the value stored is (ON, OFF, a condition, a LOGICAL).
+        if (s.targets.some((t) => targetIs(t))) result ??= logicalValue(s.value);
         result ??= find(s.value, s.targets.some(logicalLocal)) ?? s.targets.map((t) => find(t, false)).find((r) => r !== undefined);
         break;
       case 'read':
