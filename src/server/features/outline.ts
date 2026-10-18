@@ -25,6 +25,21 @@ const KIND: Record<ClKind, SymbolKind> = {
   argument: SymbolKind.Variable,
 };
 
+/**
+ * The CL word for structural symbols, shown first in their detail. The outline's tooltip names
+ * the LSP kind ("class", "method"), which an extension cannot change, so the word is there instead.
+ */
+const KEYWORD: Partial<Record<ClKind, string>> = {
+  sequence: 'SEQUENCE',
+  block: 'BLOCK',
+  subroutine: 'SUBROUTINE',
+  package: 'PACKAGE',
+  enumeration: 'ENUMERATION',
+  phase: 'PHASE',
+  step: 'STEP',
+  label: 'label',
+};
+
 /** Declaration lists run to dozens of names; past this many they are grouped under one node. */
 const GROUP_OVER = 3;
 
@@ -56,7 +71,7 @@ function toDocumentSymbol(sym: ClSymbol, unused: Set<ClSymbol>, unit?: Unit): Do
   ];
   return {
     name: sym.ident.text || sym.name,
-    detail: unused.has(sym) ? ['unused', sym.detail].filter(Boolean).join(' · ') : sym.detail,
+    detail: [unused.has(sym) && 'unused', KEYWORD[sym.kind], sym.detail].filter(Boolean).join(' · ') || undefined,
     kind: KIND[sym.kind],
     range: sym.range,
     selectionRange: sym.ident.range,

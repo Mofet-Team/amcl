@@ -170,3 +170,23 @@ describe('hover without a workspace', () => {
     expect(at('FV101.MODATTR', 0, 7)).toContain('**FV101.MODATTR** · Enumeration');
   });
 });
+
+describe('outline: CL words', () => {
+  it('names structural entries with their CL word, since the tooltip shows the LSP kind', async () => {
+    const { analyze } = await import('../src/language/analyze');
+    const { documentSymbols } = await import('../src/server/features/outline');
+    const a = analyze(
+      'SEQUENCE S (HPM; POINT S)\nPHASE P (KEEPENB)\nSTEP A\nL: EXIT\nPHASE Q (HOLD H; SHUTDOWN D)\nEXIT\nEND S\nHOLD HANDLER H\nEXIT\nEND H\nSHUTDOWN HANDLER D\nEXIT\nEND D\nSUBROUTINE SUB\nEXIT\nEND SUB',
+    );
+    const flat = (ss: any[]): any[] => ss.flatMap((x) => [x, ...flat(x.children ?? [])]);
+    const detail = (name: string) => flat(documentSymbols(a.binding.symbols, a.file.units)).find((x) => x.name === name)?.detail;
+    expect(detail('S')).toBe('SEQUENCE · HPM; POINT S');
+    expect(detail('P')).toBe('PHASE · KEEPENB');
+    expect(detail('Q')).toBe('PHASE · HOLD H; SHUTDOWN D');
+    expect(detail('D')).toBe('SHUTDOWN HANDLER');
+    expect(detail('A')).toBe('STEP');
+    expect(detail('L')).toMatch(/^(unused · )?label$/);
+    expect(detail('H')).toBe('HOLD HANDLER');
+    expect(detail('SUB')).toMatch(/^(unused · )?SUBROUTINE$/);
+  });
+});

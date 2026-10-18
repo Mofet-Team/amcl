@@ -335,7 +335,9 @@ class Binder {
   private bindSequence(phases: Phase[], owner: ClSymbol, ctx: Context): void {
     const phaseSyms = phases.map((p) => {
       if (!p.name) return undefined;
-      const s = this.symbol('phase', p.name, p.range, p.keepEnb ? 'KEEPENB' : undefined);
+      // The abnormal condition handlers the phase enables, or KEEPENB.
+      const handlers = p.handlers.map((h) => `${h.type} ${h.name.text}`).join('; ');
+      const s = this.symbol('phase', p.name, p.range, p.keepEnb ? 'KEEPENB' : handlers || undefined);
       owner.children.push(s);
       ctx.phases.define(s);
       return s;
