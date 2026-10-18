@@ -241,7 +241,7 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
-### Unreleased
+### 0.8.1
 
 - An undeclared name stored to by SET or READ is reported, and the quick fix declares it as a
   LOGICAL flag or a number by the value stored.
