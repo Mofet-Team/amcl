@@ -151,6 +151,14 @@ parameter lists and enumerations.
   HPM (UCN/node), then each program's phases with their steps, handlers and subroutines. A
   click opens the code. Programs marked red have errors in their `.LE`; yellow ones changed
   since the compile that wrote their listing. Listings are read only for the HPMs you open.
+- **Quick fixes** (Ctrl+. or the light bulb): add an undeclared point to EXTERNAL (on an `&` line
+  when the list is full, or a new EXTERNAL above the LOCAL that needs it); remove an unused
+  LOCAL, constant, EXTERNAL point or label (its statement keeps its column; LOOP labels stay);
+  continue a line past column 132 on an `&` line, between tokens, or move code indented past it;
+  put a space between a Hebrew state and THEN, AND or OR; declare an undefined name as a LOCAL
+  (LOGICAL on a flag when it is used as a condition, else a number) on the first slot of the
+  sequence's point that neither the file nor another program uses, or change it to a declared
+  name a letter or two away.
 - **CL Shared Storage** view in the Explorer: every box variable, sequence slot and array
   element that two sequences or more use (copies of one program count once), or that one uses
   and a box Numeric or Flag point (a tag) names, since displays and other systems read and write
@@ -233,6 +241,13 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
+### 0.8.0
+
+- Quick fixes for undeclared points and names, unused declarations and labels, lines past
+  column 132, and Hebrew written against THEN, AND or OR.
+- Each HPM the point database does not place is a group of its own, named by a point bound in
+  it, under "HPMs not in the point database": storage of different HPMs no longer shows as one.
+
 ### 0.7.1
 
 - CL/AM blocks, and programs of HPMs missing from the point database, are listed under the LCN

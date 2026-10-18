@@ -12,8 +12,9 @@ export function placeBox(box: string | undefined, network?: string): { lcn?: str
   const m = box && /^(.*)\/(\d+):(\d+)$/.exec(box);
   const two = (n: string) => n.padStart(2, '0');
   if (m) return { lcn: m[1] || network, hpm: `HPM ${two(m[2])}/${two(m[3])}`, hpmOrder: `0 ${m[2].padStart(4, '0')} ${m[3].padStart(4, '0')}` };
-  // Placed together by shared storage, but not in the point database.
-  if (box?.startsWith('G')) return { lcn: network, hpm: 'HPM not in the point database', hpmOrder: '1' };
+  // Placed together by shared storage, but not in the point database: one group per HPM, named by
+  // a point bound in it, so storage of different HPMs is not shown as one.
+  if (box?.startsWith('G')) return { lcn: network, hpm: `HPM of ${box.slice(1)} (not in the point database)`, hpmOrder: `1 ${box.slice(1)}` };
   return { lcn: network, hpm: 'No bound point', hpmOrder: '3' };
 }
 

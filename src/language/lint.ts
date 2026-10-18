@@ -612,6 +612,8 @@ class Linter {
   /** What a bare name compared with `other` may be: its states, or 'any' beside a point parameter. */
   private statesBeside(other: Expr): Set<string> | 'any' {
     if (other.kind === 'member' || (other.kind === 'apply' && other.callee.kind === 'member')) return 'any';
+    // Compared with ON or OFF, the other side is a logical value, not a state.
+    if (other.kind === 'name' && (other.id.name === 'ON' || other.id.name === 'OFF') && !this.resolved.get(other.id)) return new Set();
     if (other.kind === 'name' || (other.kind === 'apply' && other.callee.kind === 'name')) {
       const id = other.kind === 'name' ? other.id : (other.callee as Extract<Expr, { kind: 'name' }>).id;
       const sym = this.resolved.get(id);

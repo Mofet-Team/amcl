@@ -1,4 +1,6 @@
 import {
+  CodeAction,
+  CodeActionKind,
   createConnection,
   DocumentSymbol,
   FoldingRange,
@@ -37,6 +39,8 @@ import { isWhole, ListingView, sourceView, wholeView } from './listingView';
 import { Listing, parseListing, placeMessages } from '../language/listing';
 import { Severity } from '../language/types';
 import { FormatOptions, formatCl, learnColumns, readFormatRules } from '../language/format';
+import { quickFixes } from '../language/quickfix';
+import { Diagnostic as ClDiagnostic } from '../language/types';
 import { programItems, programParts, programStatus, sharedStorage, storageAccesses } from './programs';
 import {
   PROGRAM_PARTS_REQUEST,
@@ -263,6 +267,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       referencesProvider: true,
       documentHighlightProvider: true,
       documentFormattingProvider: true,
+      codeActionProvider: { codeActionKinds: [CodeActionKind.QuickFix] },
       documentRangeFormattingProvider: true,
       hoverProvider: true,
       completionProvider: { triggerCharacters: ['.'] },
@@ -606,6 +611,28 @@ connection.onRequest(LOCATE_REQUEST, ({ uri, kind, name }: LocateParams) => {
   if (kind === 'sequence' || kind === 'block') return summary.programs.find((p) => p.name.toUpperCase() === upper)?.nameRange.start ?? null;
   if (kind === 'local') return summary.storage.find((u) => u.local?.name.toUpperCase() === upper)?.local?.decl.start ?? null;
   return summary.symbols.find((s) => s.kind === kind && s.name.toUpperCase() === upper)?.range.start ?? null;
+});
+
+// ------------------------------------------------------------------ quick fixes
+
+connection.onCodeAction(({ textDocument, context }) => {
+  const doc = documents.get(textDocument.uri);
+  if (!doc || isListing(doc)) return [];
+  const { analysis } = analysisOf(doc);
+  const lines = doc.getText().split(/\r?\n|\r/);
+  // A slot of a sequence's own point is taken when any program in the workspace maps onto it.
+  const taken = (point: string, param: string, i: number) => index.storageEntries().has(`PM:${point}:${param}:${i}`);
+  return context.diagnostics.flatMap((d) =>
+    quickFixes(lines, analysis, d as unknown as ClDiagnostic, taken).map(
+      (fix): CodeAction => ({
+        title: fix.title,
+        kind: CodeActionKind.QuickFix,
+        diagnostics: [d],
+        isPreferred: fix.preferred,
+        edit: { changes: { [doc.uri]: fix.edits } },
+      }),
+    ),
+  );
 });
 
 // ------------------------------------------------------------------ formatting

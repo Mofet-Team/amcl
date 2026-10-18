@@ -95,6 +95,13 @@ describe.skipIf(!fs.existsSync(serverPath))('language server over stdio', () => 
     expect(d.find((x: any) => x.code === 'line-length')).toMatchObject({ severity: 2, range: { start: { line: 2, character: 132 } } });
   });
 
+  it('offers quick fixes for the problems it reports', async () => {
+    const d = (await client.waitFor('textDocument/publishDiagnostics')).diagnostics.find((x: any) => x.message === 'STATES is defined but not referenced');
+    const actions = await client.request('textDocument/codeAction', { textDocument: { uri }, range: d.range, context: { diagnostics: [d] } });
+    expect(actions.map((a: any) => [a.title, a.kind, a.isPreferred])).toEqual([['Remove unused LOCAL STATES', 'quickfix', true]]);
+    expect(Object.keys(actions[0].edit.changes)).toEqual([uri]);
+  });
+
   it('answers documentSymbol, definition and foldingRange', async () => {
     const symbols = await client.request('textDocument/documentSymbol', { textDocument: { uri } });
     expect(symbols.map((s: any) => s.name)).toEqual(['REACT1', 'PREPARE', 'HEAT', 'HLD1', 'SHDN1', 'CHECK']);

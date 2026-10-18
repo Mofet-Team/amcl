@@ -421,3 +421,25 @@ describe('view data fixes', () => {
     expect(programParts(s, 'B2').map((p) => p.name)).toEqual(['S2']);
   });
 });
+
+describe('HPMs the database does not place', () => {
+  it('are one group each, named by a point bound in them, so their storage is not shown as one', async () => {
+    const { analyze } = await import('../src/language/analyze');
+    const { summarize } = await import('../src/language/summary');
+    const { WorkspaceIndex } = await import('../src/language/workspace');
+    const { programItems, sharedStorage } = await import('../src/server/programs');
+    const prog = (name: string, other: string) =>
+      `SEQUENCE ${name} (HPM; POINT ${name})\nEXTERNAL !BOX, ${other}\nLOCAL F: LOGICAL AT !BOX.FL(92)\nLOCAL N AT ${other}.NN(1)\nPHASE P\nSET F = ON\nSET N = 1\nEND ${name}`;
+    const index = new WorkspaceIndex();
+    // A and B share a slot, so one HPM; C and D another. Neither is in the point database.
+    index.setFile('file:///A.CL', summarize(analyze(prog('A', 'B'))));
+    index.setFile('file:///B.CL', summarize(analyze(prog('B', 'A'))));
+    index.setFile('file:///C.CL', summarize(analyze(prog('C', 'D'))));
+    index.setFile('file:///D.CL', summarize(analyze(prog('D', 'C'))));
+    const hpms = [...new Set(programItems(index).map((p) => p.hpm))].sort();
+    expect(hpms).toHaveLength(2);
+    expect(hpms.every((h) => /^HPM of \w+ \(not in the point database\)$/.test(h))).toBe(true);
+    const flags = sharedStorage(index).filter((s) => s.param === 'FL' && s.index === 92);
+    expect(flags.map((s) => s.hpm).sort()).toEqual(hpms);
+  });
+});

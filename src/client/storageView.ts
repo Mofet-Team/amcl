@@ -2,7 +2,7 @@ import { Event, EventEmitter, MarkdownString, ThemeIcon, TreeDataProvider, TreeI
 import { LanguageClient } from 'vscode-languageclient/node';
 import { SHARED_STORAGE_REQUEST, STORAGE_ACCESSES_REQUEST, StorageAccess, StorageSlot } from '../shared/programs';
 import { openEntryCommand } from './openEntry';
-import { UNKNOWN_LCN } from './programsView';
+import { UNKNOWN_LCN, UNPLACED_HPMS, UNPLACED_HPMS_TOOLTIP } from './programsView';
 
 const UNKNOWN_LCN_TOOLTIP =
   'Storage in HPMs the point database does not place, used only by programs whose LCN is not known either.';
@@ -10,6 +10,7 @@ const UNKNOWN_LCN_TOOLTIP =
 type Node =
   | { kind: 'lcn'; name: string; slots: StorageSlot[] }
   | { kind: 'hpm'; name: string; slots: StorageSlot[] }
+  | { kind: 'unplaced'; slots: StorageSlot[] }
   | { kind: 'owner'; name: string; slots: StorageSlot[] }
   | { kind: 'slot'; slot: StorageSlot }
   | { kind: 'access'; access: StorageAccess };
@@ -45,6 +46,8 @@ export class StorageView implements TreeDataProvider<Node> {
     switch (node.kind) {
       case 'lcn':
         return this.hpms(node.slots);
+      case 'unplaced':
+        return this.hpms(node.slots, false);
       case 'hpm': {
         // Box variables by type first, then each sequence's slots, then arrays.
         const order = (s: StorageSlot) => (s.ownerKind === 'box' ? `0 ${s.param}` : s.ownerKind === 'module' ? `1 ${s.owner}` : `2 ${s.owner}`);
@@ -70,17 +73,28 @@ export class StorageView implements TreeDataProvider<Node> {
     }
   }
 
-  private hpms(slots: StorageSlot[]): Node[] {
-    const byHpm = groupBy(slots, (s) => `${s.hpmOrder}|${s.hpm}`);
-    return [...byHpm].sort(([a], [b]) => a.localeCompare(b)).map(([k, ss]) => ({ kind: 'hpm', name: k.slice(k.indexOf('|') + 1), slots: ss }));
+  /** HPMs in order; those the database does not place go under one node, unless `nest` is off. */
+  private hpms(slots: StorageSlot[], nest = true): Node[] {
+    const unplaced = slots.filter((s) => s.hpmOrder.startsWith('1'));
+    const byHpm = groupBy(nest ? slots.filter((s) => !s.hpmOrder.startsWith('1')) : slots, (s) => `${s.hpmOrder}|${s.hpm}`);
+    const nodes: Node[] = [...byHpm].sort(([a], [b]) => a.localeCompare(b)).map(([k, ss]) => ({ kind: 'hpm', name: k.slice(k.indexOf('|') + 1), slots: ss }));
+    if (nest && unplaced.length) nodes.push({ kind: 'unplaced', slots: unplaced });
+    return nodes;
   }
 
   getTreeItem(node: Node): TreeItem {
     switch (node.kind) {
+      case 'unplaced': {
+        const item = new TreeItem(UNPLACED_HPMS, TreeItemCollapsibleState.Collapsed);
+        item.iconPath = new ThemeIcon('question');
+        item.description = `${new Set(node.slots.map((s) => s.hpm)).size} HPMs`;
+        item.tooltip = UNPLACED_HPMS_TOOLTIP;
+        return item;
+      }
       case 'lcn':
       case 'hpm':
       case 'owner': {
-        const item = new TreeItem(node.name, TreeItemCollapsibleState.Collapsed);
+        const item = new TreeItem(node.name.replace(/ \(not in the point database\)$/, ''), TreeItemCollapsibleState.Collapsed);
         const unknown = node.kind === 'lcn' && node.name === UNKNOWN_LCN;
         item.iconPath = new ThemeIcon(unknown ? 'question' : node.kind === 'lcn' ? 'globe' : node.kind === 'hpm' ? 'server' : node.name.startsWith('Box') ? 'database' : 'symbol-module');
         item.description = `${node.slots.length}`;

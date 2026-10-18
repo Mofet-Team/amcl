@@ -24,10 +24,14 @@ import {
 type Node =
   | { kind: 'lcn'; name: string; programs: ProgramItem[] }
   | { kind: 'hpm'; name: string; programs: ProgramItem[] }
+  | { kind: 'unplaced'; programs: ProgramItem[] }
   | { kind: 'program'; program: ProgramItem; status?: ProgramStatus }
   | { kind: 'part'; uri: string; part: ProgramPart };
 
 export const UNKNOWN_LCN = 'LCN not known';
+export const UNPLACED_HPMS = 'HPMs not in the point database';
+export const UNPLACED_HPMS_TOOLTIP =
+  'HPMs whose points the point database export lacks. Programs are grouped by the box storage they share (a LOCAL on another sequence\'s slot puts both in one HPM); each group is named by a point bound in it.';
 export const UNKNOWN_LCN_TOOLTIP =
   'Neither the bound point nor any point these files use is in the point database, and no other program in their folder is placed, so their LCN is not known.';
 
@@ -72,6 +76,8 @@ export class ProgramsView implements TreeDataProvider<Node> {
     switch (node.kind) {
       case 'lcn':
         return this.hpms(node.programs);
+      case 'unplaced':
+        return this.hpms(node.programs, false);
       case 'hpm': {
         const programs = [...node.programs].sort((a, b) => a.name.localeCompare(b.name));
         const statuses = await this.client
@@ -89,11 +95,19 @@ export class ProgramsView implements TreeDataProvider<Node> {
     }
   }
 
-  private hpms(programs: ProgramItem[]): Node[] {
-    const byHpm = groupBy(programs, (p) => `${p.hpmOrder}|${p.hpm}`);
-    return [...byHpm]
+  /** HPMs in order; those the database does not place go under one node, unless `nest` is off. */
+  private hpms(programs: ProgramItem[], nest = true): Node[] {
+    const unplaced = programs.filter((p) => p.hpmOrder.startsWith('1'));
+    const byHpm = groupBy(nest ? programs.filter((p) => !p.hpmOrder.startsWith('1')) : programs, (p) => `${p.hpmOrder}|${p.hpm}`);
+    const nodes: Node[] = [...byHpm]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, ps]) => ({ kind: 'hpm', name: key.slice(key.indexOf('|') + 1), programs: ps }));
+    if (nest && unplaced.length) {
+      // After the HPMs the database places, before CL/AM and programs without a bound point.
+      const after = nodes.findIndex((n) => n.kind === 'hpm' && n.programs[0].hpmOrder >= '2');
+      nodes.splice(after < 0 ? nodes.length : after, 0, { kind: 'unplaced', programs: unplaced });
+    }
+    return nodes;
   }
 
   getTreeItem(node: Node): TreeItem {
@@ -106,9 +120,17 @@ export class ProgramsView implements TreeDataProvider<Node> {
         return item;
       }
       case 'hpm': {
-        const item = new TreeItem(node.name, TreeItemCollapsibleState.Collapsed);
+        // Inside "HPMs not in the point database", the group's own name says enough.
+        const item = new TreeItem(node.name.replace(/ \(not in the point database\)$/, ''), TreeItemCollapsibleState.Collapsed);
         item.iconPath = new ThemeIcon('server');
         item.description = `${node.programs.length}`;
+        return item;
+      }
+      case 'unplaced': {
+        const item = new TreeItem(UNPLACED_HPMS, TreeItemCollapsibleState.Collapsed);
+        item.iconPath = new ThemeIcon('question');
+        item.description = `${new Set(node.programs.map((p) => p.hpm)).size} HPMs, ${node.programs.length} programs`;
+        item.tooltip = UNPLACED_HPMS_TOOLTIP;
         return item;
       }
       case 'program':
