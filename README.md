@@ -233,7 +233,7 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
-### Unreleased
+### 0.7.1
 
 - CL/AM blocks, and programs of HPMs missing from the point database, are listed under the LCN
   of the points they use; failing that, under the LCN most programs in their folder are on,

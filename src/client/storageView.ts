@@ -2,7 +2,10 @@ import { Event, EventEmitter, MarkdownString, ThemeIcon, TreeDataProvider, TreeI
 import { LanguageClient } from 'vscode-languageclient/node';
 import { SHARED_STORAGE_REQUEST, STORAGE_ACCESSES_REQUEST, StorageAccess, StorageSlot } from '../shared/programs';
 import { openEntryCommand } from './openEntry';
-import { UNKNOWN_LCN, UNKNOWN_LCN_TOOLTIP } from './programsView';
+import { UNKNOWN_LCN } from './programsView';
+
+const UNKNOWN_LCN_TOOLTIP =
+  'Storage in HPMs the point database does not place, used only by programs whose LCN is not known either.';
 
 type Node =
   | { kind: 'lcn'; name: string; slots: StorageSlot[] }
