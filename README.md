@@ -21,6 +21,16 @@ parameter lists and enumerations.
     REACT2 maps on `NN(41)`. Find references on `LOCAL F AT !BOX.FL(21)` lists every sequence
     and AM block that reads or writes that box flag, whatever they call it: `!BOX.FL(21)`,
     `$NM01N09.FL(21)`, `$NM01B09.FL(21)`, a Flag point's `.PV`, or an Array point element.
+  - **Who Stores to This** (editor context menu, also in `.LS` / `.LE`): on a LOCAL, a storage
+    element, a point parameter (`REACT2.SP`) or a point, lists the programs that store to it,
+    then those that read it, each with its line, and the box point (tag) at a box element.
+    Moving through the list shows each place; Escape returns to where you were.
+- Rename (F2) of LOCALs, constants, labels, steps, phases, handlers, subroutines and
+  arguments, in their file only. A name already used in the file, a reserved word, a built-in or
+  a point in the database is refused, and so is a step, phase, handler or subroutine name over 8
+  characters outside CL/AM, and a name declared twice. Points and program names are not
+  renamed. When other programs give a LOCAL the same name on the same storage, a message names
+  them; their files are left as they are.
   - Workspace symbol search (Ctrl+T) over programs, phases, steps, handlers, subroutines and
     every point in the database.
 - Hover:
@@ -241,6 +251,14 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
+### 0.9.1
+
+- Who Stores to This (editor context menu, also in `.LS` / `.LE`): the programs that store to a
+  LOCAL, storage element, point parameter or point, then those that read it, each with its line.
+- Rename (F2) of LOCALs, constants, labels, steps, phases, handlers, subroutines and arguments,
+  in their file only, with the new name checked against the file, reserved words, built-ins and
+  the point database.
+
 ### 0.8.1
 
 - An undeclared name stored to by SET or READ is reported, and the quick fix declares it as a
