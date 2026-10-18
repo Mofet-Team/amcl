@@ -43,7 +43,11 @@ export const PROGRAMS_REQUEST = 'amcl/programs';
 export const PROGRAM_PARTS_REQUEST = 'amcl/programParts';
 export const PROGRAM_STATUS_REQUEST = 'amcl/programStatus';
 
-/** A storage element used by programs bound to two points or more (copies of one program count once). */
+/**
+ * A storage element used by programs bound to two points or more (copies of one program count
+ * once), or used by one and named by a box Numeric or Flag point, which displays and other
+ * systems read and write it through.
+ */
 export interface StorageSlot {
   key: string;
   lcn?: string;
@@ -60,6 +64,9 @@ export interface StorageSlot {
   programs: number;
   /** Sequence slots whose programs store to it. */
   writers: number;
+  /** The box Numeric or Flag point (tag) at the element, and its descriptor. */
+  tag?: string;
+  tagDescriptor?: string;
 }
 
 /** One program file's accesses to a storage element. */
@@ -73,6 +80,10 @@ export interface StorageAccess {
   character: number;
   writes: number;
   reads: number;
+  /** The row is the box Numeric or Flag point at the element, not a program. */
+  tag?: boolean;
+  /** For a tag: its descriptor. */
+  descriptor?: string;
 }
 
 export const SHARED_STORAGE_REQUEST = 'amcl/sharedStorage';

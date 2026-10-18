@@ -84,19 +84,36 @@ export class StorageView implements TreeDataProvider<Node> {
         const s = node.slot;
         const item = new TreeItem(`${s.param}(${s.index})`, TreeItemCollapsibleState.Collapsed);
         item.iconPath = new ThemeIcon('symbol-field');
-        const who = `${s.programs} sequences${s.writers ? `, ${s.writers} storing` : ', none storing'}`;
-        item.description = [s.names.slice(0, 3).join(', ') + (s.names.length > 3 ? '…' : ''), who].filter(Boolean).join(' · ');
+        const who = `${s.programs} sequence${s.programs === 1 ? '' : 's'}${s.writers ? `, ${s.writers} storing` : ', none storing'}`;
+        // The tag first: it is how displays and other systems know the element.
+        const locals = s.names.filter((n) => n !== s.tag);
+        const names = locals.slice(0, 3).join(', ') + (locals.length > 3 ? '…' : '');
+        item.description = [s.tag && `🏷 ${s.tag}`, names, who].filter(Boolean).join(' · ');
+        if (s.tag) item.iconPath = new ThemeIcon('tag');
         item.tooltip = new MarkdownString(
-          [`**${s.owner === 'Box' ? `${s.hpm} box` : s.owner} ${s.param}(${s.index})**`, '', `Used by ${who}.`, '', s.names.length ? `Names: ${s.names.join(', ')}` : 'Accessed directly only.'].join('\n'),
+          [
+            `**${s.owner === 'Box' ? `${s.hpm} box` : s.owner} ${s.param}(${s.index})**`,
+            '',
+            s.tag ? `Tag **${s.tag}**${s.tagDescriptor ? `: ${s.tagDescriptor}` : ''}, a box ${s.param === 'FL' ? 'Flag' : 'Numeric'} point: displays and other systems can read and write it.` : '',
+            '',
+            `Used by ${who}.`,
+            '',
+            locals.length ? `LOCAL names: ${locals.join(', ')}` : 'Accessed directly only.',
+          ].join('\n'),
         );
         return item;
       }
       case 'access': {
         const a = node.access;
         const item = new TreeItem(a.program, TreeItemCollapsibleState.None);
-        item.iconPath = new ThemeIcon(a.writes ? 'edit' : 'eye');
-        const counts = [a.writes && `stores ${a.writes}`, a.reads && `reads ${a.reads}`].filter(Boolean).join(', ');
-        item.description = `${a.name ?? 'direct'}${counts ? ` · ${counts}` : ''}`;
+        if (a.tag) {
+          item.iconPath = new ThemeIcon('tag');
+          item.description = ['tag', a.descriptor].filter(Boolean).join(' · ');
+        } else {
+          item.iconPath = new ThemeIcon(a.writes ? 'edit' : 'eye');
+          const counts = [a.writes && `stores ${a.writes}`, a.reads && `reads ${a.reads}`].filter(Boolean).join(', ');
+          item.description = `${a.name ?? 'direct'}${counts ? ` · ${counts}` : ''}`;
+        }
         const at = new Position(a.line, a.character);
         item.command = { command: 'vscode.open', title: 'Open', arguments: [Uri.parse(a.uri), { selection: new Range(at, at) }] };
         return item;

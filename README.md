@@ -121,8 +121,8 @@ parameter lists and enumerations.
     only the lines with errors, so it works through the source file beside it.
   - Notes, such as "All enabled abnormal handlers are disabled", are hints: dots in the editor
     with the message on hover, not entries in the Problems panel.
-  - **CL: Compare with Last Compile** (the compare button on a CL editor, the file's context
-    menu, or a program in CL Programs) opens a diff of the source the `.LS` shows, which is what
+  - **CL: Compare with Last Compile** (the compare button on a CL editor, the right-click menu
+    in the editor, on its tab and on the file, or a program in CL Programs) opens a diff of the source the `.LS` shows, which is what
     was compiled, against the file now, with the compile date in the title. Lines the listing
     cut at its page width are taken from the file where they start the same. An `.LE` holds only
     the lines with errors, so a file with only an `.LE` cannot be compared.
@@ -152,7 +152,9 @@ parameter lists and enumerations.
   click opens the code. Programs marked red have errors in their `.LE`; yellow ones changed
   since the compile that wrote their listing. Listings are read only for the HPMs you open.
 - **CL Shared Storage** view in the Explorer: every box variable, sequence slot and array
-  element that two sequences or more use (copies of one program count once), by LCN and HPM,
+  element that two sequences or more use (copies of one program count once), or that one uses
+  and a box Numeric or Flag point (a tag) names, since displays and other systems read and write
+  it through the tag. The tag and its descriptor come first; by LCN and HPM,
   then by owner: box flags, numerics, times and strings, each sequence's slots, and arrays. An
   element shows the LOCAL names it goes by and how many sequences store to it; opened, it lists
   each program with the LOCAL it uses and how often it stores and reads, and a click goes there.
@@ -237,7 +239,8 @@ Bug reports are welcome!
   collapsed; entries name their CL kind (SEQUENCE, PHASE, STEP, SUBROUTINE, HOLD HANDLER...),
   and a phase shows the handlers its heading enables.
 - CL Programs view: programs by LCN and HPM, with their parts and compile status.
-- CL Shared Storage view: storage two sequences or more use, with who stores and who reads.
+- CL Shared Storage view: storage two sequences or more use, or one uses under a tag, with who
+  stores and who reads.
 - Compare with Last Compile: the compiled source from the `.LS` against the file, in a diff.
 
 ### 0.6.1

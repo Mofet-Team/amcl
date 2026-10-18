@@ -227,6 +227,20 @@
           "group": "navigation"
         }
       ],
+      "editor/context": [
+        {
+          "command": "amcl.compareWithCompile",
+          "when": "resourceLangId == cl && resourceScheme == file",
+          "group": "navigation@90"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "amcl.compareWithCompile",
+          "when": "resourceLangId == cl && resourceScheme == file",
+          "group": "3_compare"
+        }
+      ],
       "explorer/context": [
         {
           "command": "amcl.compareWithCompile",

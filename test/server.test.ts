@@ -166,10 +166,10 @@ describe.skipIf(!fs.existsSync(serverPath))('language server: workspace index', 
     const status = await client.request('amcl/programStatus', { uris: [mixerUri] });
     expect(status).toEqual([{ uri: mixerUri, errors: 0, changed: false, noListing: true }]);
     const slots = await client.request('amcl/sharedStorage', {});
-    expect(slots.map((x: any) => `${x.param}(${x.index})`).sort()).toEqual(['FL(1002)', 'FL(21)', 'NN(5)']);
+    expect(slots.map((x: any) => `${x.param}(${x.index})`).sort()).toEqual(['FL(1002)', 'FL(21)', 'NN(300)', 'NN(5)']);
     const flag = slots.find((x: any) => x.index === 21);
     const accesses = await client.request('amcl/storageAccesses', { key: flag.key });
-    expect(accesses.map((a: any) => a.program).sort()).toEqual(['AMBLK', 'DOSER', 'MIXER']);
+    expect(accesses.map((a: any) => a.program)).toEqual(['AGIT_ON', 'AMBLK', 'MIXER', 'DOSER']);
     // The notice waits until indexing settles.
     const changed = await until(
       async () => client.notifications.some((n) => n.method === 'amcl/programsChanged' && n.params.count === 3),

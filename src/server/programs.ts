@@ -81,7 +81,9 @@ export function sharedStorage(index: WorkspaceIndex): StorageSlot[] {
   for (const [key, entries] of index.storageEntries()) {
     const accesses = entries.filter((e) => e.kind !== 'point');
     const slots = new Set(accesses.map((e) => slotOf(e.uri)));
-    if (slots.size < 2) continue;
+    const tag = entries.find((e) => e.point)?.point;
+    // Shared between sequences, or with whatever reads and writes the tag.
+    if (slots.size < (tag ? 1 : 2)) continue;
     const parts = key.split(':');
     const kind = parts[0];
     const index_ = Number(parts[parts.length - 1]);
@@ -100,6 +102,8 @@ export function sharedStorage(index: WorkspaceIndex): StorageSlot[] {
       names,
       programs: slots.size,
       writers: writers.size,
+      tag: tag?.name,
+      tagDescriptor: tag?.fields.PTDESC?.trim() || undefined,
     });
   }
   return out;
@@ -108,8 +112,14 @@ export function sharedStorage(index: WorkspaceIndex): StorageSlot[] {
 /** Each program's accesses to one storage element: through which LOCAL, how often it stores and reads. */
 export function storageAccesses(index: WorkspaceIndex, key: string): StorageAccess[] {
   const out = new Map<string, StorageAccess>();
+  const tags: StorageAccess[] = [];
   for (const e of index.storageEntries().get(key) ?? []) {
-    if (e.kind === 'point') continue;
+    if (e.kind === 'point') {
+      if (e.point) {
+        tags.push({ program: e.point.name, uri: e.uri, line: e.range.start.line, character: e.range.start.character, writes: 0, reads: 0, tag: true, descriptor: e.point.fields.PTDESC?.trim() || undefined });
+      }
+      continue;
+    }
     // The file name: copies of one program differ only in it.
     const program = decodeURIComponent(e.uri.replace(/^.*\//, '')).replace(/\.cl$/i, '');
     const name = e.local?.name;
@@ -124,5 +134,5 @@ export function storageAccesses(index: WorkspaceIndex, key: string): StorageAcce
       a.reads += reads;
     } else out.set(id, { program, uri: e.uri, name, line: at.line, character: at.character, writes, reads });
   }
-  return [...out.values()].sort((a, b) => b.writes - a.writes || a.program.localeCompare(b.program));
+  return [...tags, ...[...out.values()].sort((a, b) => b.writes - a.writes || a.program.localeCompare(b.program))];
 }

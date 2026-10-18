@@ -364,11 +364,16 @@ describe('CL Shared Storage view data', () => {
     expect(brief).toEqual([
       'HPM 01/09 box Box FL(1002)  2p 1w',
       'HPM 01/09 box Box FL(21) AGITATE/READY/AGIT_ON 3p 2w',
+      // One sequence, but the tag TANK_LVL names it: displays share it.
+      'HPM 01/09 box Box NN(300) LEVEL/TANK_LVL 1p 1w',
       'HPM 01/09 module DOSER NN(5) DOSE_QTY/QTY 3p 3w',
     ]);
+    expect(slots.find((s) => s.index === 300)).toMatchObject({ tag: 'TANK_LVL' });
+    expect(slots.find((s) => s.index === 5)!.tag).toBeUndefined();
 
     const flag = slots.find((s) => s.param === 'FL' && s.index === 21)!;
-    expect(storageAccesses(index, flag.key).map((a) => `${a.program} ${a.name ?? 'direct'} w${a.writes} r${a.reads}`)).toEqual([
+    expect(storageAccesses(index, flag.key).map((a) => (a.tag ? `tag ${a.program}` : `${a.program} ${a.name ?? 'direct'} w${a.writes} r${a.reads}`))).toEqual([
+      'tag AGIT_ON',
       'AMBLK direct w1 r0',
       'MIXER AGITATE w1 r0',
       'DOSER READY w0 r1',
