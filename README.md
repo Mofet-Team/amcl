@@ -109,6 +109,9 @@ parameter lists and enumerations.
   - Warnings the compiler does not give: messages longer than the 60 characters the CRT shows,
     subroutines nested deeper than one level, `WAIT` on an absolute time, and access to a point
     the point database places in another node (only READ, WRITE and INITIATE reach it).
+    Two LOCALs mapped on the same `NN` or `FL` element (`local-alias`): the compiler accepts
+    the alias, but a store through one name changes the other. A name for an element of a LOCAL
+    array is only noted.
 
   Checked against compiler listings: on files whose source matches their `.LS` listing, the
   extension reports every "Defined But Not Referenced" warning the compiler gave, at the same
@@ -251,6 +254,11 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
+### 0.9.2
+
+- Two LOCALs mapped on the same `NN` or `FL` element are reported (`local-alias`): a warning,
+  or a note when one is an array and the other names one of its elements.
+
 ### 0.9.1
 
 - Who Stores to This (editor context menu, also in `.LS` / `.LE`): the programs that store to a
