@@ -233,15 +233,17 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
-### Unreleased
+### 0.7.0
 
+- **CL Programs** view: every program by LCN and HPM, with its phases and steps, handlers and
+  subroutines, and its compile status from the listings (errors in an `.LE`, or changed since
+  the compile).
+- **CL Shared Storage** view: box variables, sequence slots and array elements two sequences or
+  more use, or one uses under a tag, with who stores and who reads.
+- **Compare with Last Compile**: the source the `.LS` shows against the file now, in a diff.
 - Outline: phases are listed beside their sequence, so they show while the outline starts
   collapsed; entries name their CL kind (SEQUENCE, PHASE, STEP, SUBROUTINE, HOLD HANDLER...),
   and a phase shows the handlers its heading enables.
-- CL Programs view: programs by LCN and HPM, with their parts and compile status.
-- CL Shared Storage view: storage two sequences or more use, or one uses under a tag, with who
-  stores and who reads.
-- Compare with Last Compile: the compiled source from the `.LS` against the file, in a diff.
 
 ### 0.6.1
 
