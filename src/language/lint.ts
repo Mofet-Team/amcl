@@ -10,7 +10,7 @@ import { isViewOnly, typeHasParameter } from './pointParameters';
 import { Diagnostic, Range, Severity } from './types';
 import { BUILTINS } from './builtins';
 import { formatBox } from './workspace';
-import { walkExpr } from './walk';
+import { constantNumber, walkExpr } from './walk';
 
 /** Point database access, when one is loaded. */
 export interface LintEnvironment {
@@ -1210,16 +1210,6 @@ function isAbsoluteTime(x: Expr): boolean {
 }
 
 /** The value of a numeric literal, possibly negated or parenthesized. */
-function constantNumber(x: Expr): number | undefined {
-  if (x.kind === 'number') return Number(x.value);
-  if (x.kind === 'paren') return constantNumber(x.inner);
-  if (x.kind === 'unary' && x.op === '-') {
-    const v = constantNumber(x.operand);
-    return v === undefined ? undefined : -v;
-  }
-  return undefined;
-}
-
 /** The storage a LOCAL's type maps to [HP27-610 Table 2-4]. */
 function localFamily(t: TypeSpec | undefined): string | undefined {
   if (!t || t.kind === 'array') return 'NN';

@@ -150,3 +150,14 @@ export function walkExpr(x: Expr, f: (e: Expr) => void): void {
       break;
   }
 }
+
+/** The value of a number literal, in parentheses or negated; undefined for anything else. */
+export function constantNumber(x: Expr): number | undefined {
+  if (x.kind === 'number') return Number(x.value);
+  if (x.kind === 'paren') return constantNumber(x.inner);
+  if (x.kind === 'unary' && x.op === '-') {
+    const v = constantNumber(x.operand);
+    return v === undefined ? undefined : -v;
+  }
+  return undefined;
+}

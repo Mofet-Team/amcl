@@ -548,9 +548,7 @@ connection.onHover(({ textDocument, position }) => {
 });
 
 connection.languages.inlayHint.on(({ textDocument, range }) =>
-  withDoc(textDocument.uri, [], (doc, _analysis, summary) =>
-    inlayHints(summary, index, doc.getText().split(/\r?\n|\r/), range, settings.inlayHints ?? { locals: true, points: true }),
-  ),
+  withDoc(textDocument.uri, [], (_doc, analysis, summary) => inlayHints(analysis, summary, index, range, settings.inlayHints ?? { locals: true, points: true })),
 );
 
 connection.onCompletion(({ textDocument, position }) =>

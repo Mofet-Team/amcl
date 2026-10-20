@@ -14,39 +14,59 @@ const src = [
   'LOCAL N AT NN(12)',
   'LOCAL F: LOGICAL AT !BOX.FL(21)',
   'LOCAL A: NUMBER ARRAY(1..3) AT NN(5)',
+  'LOCAL CNT = 3+1',
+  'LOCAL B: NUMBER ARRAY(1..CNT) AT NN(20)',
+  'EXTERNAL DOSV2',
+  'EXTERNAL R2TC2',
   'PHASE P',
   'IF DOSV.PV = OPEN THEN SET F = ON',
   'SET N = R2TC.PV',
   'SET A(2) = N + 1',
+  'SET A(N) = 0',
+  'CALL SUM (A, N)',
+  'SET B(4) = B(1)',
   'END S1',
 ].join('\n');
 
 function hints(options: InlayHintOptions = { locals: true, points: true }, range = { start: { line: 0, character: 0 }, end: { line: 99, character: 0 } }) {
   const index = new WorkspaceIndex();
   index.setPoints(
-    parseEb([point('MIXER', 'PRMODNIM', 'Mixer program'), point('DOSV', 'DICMPNIM', 'Dosing line'), point('R2TC', 'REGCLNIM')].join('\n'), 'db/a.EB'),
+    parseEb(
+      [point('MIXER', 'PRMODNIM', 'Mixer program'), point('DOSV', 'DICMPNIM', 'Dosing line'), point('R2TC', 'REGCLNIM'), point('DOSV2', 'DICMPNIM', 'Second line'), point('R2TC2', 'REGCLNIM')].join('\n'),
+      'db/a.EB',
+    ),
     (f) => f,
   );
-  const summary = summarize(analyze(src));
+  const analysis = analyze(src);
+  const summary = summarize(analysis);
   index.setFile('S1.CL', summary);
-  return inlayHints(summary, index, src.split('\n'), range, options).map((h) => `${h.position.line + 1}:${h.position.character} ${h.label}`);
+  return inlayHints(analysis, summary, index, range, options).map((h) => `${h.position.line + 1}:${h.position.character} ${h.label}`);
 }
 
 describe('inlay hints', () => {
-  it('shows the storage element after each use of a LOCAL, not at its declaration or before a subscript', () => {
-    expect(hints({ locals: true, points: false })).toEqual(['7:28 !BOX.FL(21)', '8:5 NN(12)', '9:12 NN(12)']);
-  });
-
-  it('shows the descriptor, else the type, of EXTERNAL entries and the bound point, only for points in the database', () => {
-    expect(hints({ locals: false, points: true })).toEqual([
-      '1:29 Mixer program',
-      '2:19 Dosing line',
-      '2:25 Regulatory Control',
+  it('shows the storage element after each use of a LOCAL, and the element or range of an array', () => {
+    expect(hints({ locals: true, points: false })).toEqual([
+      '11:28 !BOX.FL(21)',
+      '12:5 NN(12)',
+      // A(2) is the second element; A(N) and the whole array A cover all three.
+      '13:8 NN(6)',
+      '13:12 NN(12)',
+      '14:7 NN(12)',
+      '14:8 NN(5..7)',
+      '15:11 NN(5..7)',
+      '15:14 NN(12)',
+      // CNT is a constant: B is NN(20..23).
+      '16:8 NN(23)',
+      '16:15 NN(20)',
     ]);
   });
 
+  it('shows the descriptor, else the type in brackets, of the bound point and of EXTERNAL entries alone on their line', () => {
+    expect(hints({ locals: false, points: true })).toEqual(['1:29 Mixer program', '8:14 Second line', '9:14 [Regulatory Control]']);
+  });
+
   it('gives only the hints in the range asked for, and none when turned off', () => {
-    expect(hints(undefined, { start: { line: 7, character: 0 }, end: { line: 7, character: 99 } })).toEqual(['8:5 NN(12)']);
+    expect(hints(undefined, { start: { line: 11, character: 0 }, end: { line: 11, character: 99 } })).toEqual(['12:5 NN(12)']);
     expect(hints({ locals: false, points: false })).toEqual([]);
   });
 });
