@@ -201,7 +201,10 @@ Build) with the `amcl.pointDatabase` setting, for example:
 "amcl.pointDatabase": ["~/tps/points"]
 ```
 
-`.EB` files inside the workspace are read automatically. The database tells the extension which
+`.EB` files inside the workspace are read automatically. A new export into a configured folder,
+inside the workspace or not, is read as it arrives; on a share that sends no change
+notifications, run **Developer: Reload Window**. `~` is the home folder (`~/db`, or `~\db` on
+Windows). The database tells the extension which
 HPM each sequence runs in, so `!BOX` in two sequences on the same HPM is recognised as the same
 box. Without it, the HPM is inferred from `LOCAL ... AT other_sequence.NN(i)` mappings, which are
 only allowed within one HPM.
@@ -261,6 +264,19 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
+### 0.10.5
+
+- A file whose SEQUENCE heading is commented out gets one "missing heading" error, not one
+  `decl-after-phase` error on every declaration. Declarations after a real PHASE are still
+  reported.
+- Point database and network configuration folders outside the workspace are watched: a new
+  `.EB` export or NCF file is read without reloading the window. `~\` is expanded on Windows.
+- `local-alias` knows array sizes given by constants (`ARRAY(1..CNT)`, `LOCAL CNT=19+1`), as
+  the inlay hints do, so overlaps of such arrays are reported.
+- The CLOSE XV and OPEN XV snippets are `xvclose` and `xvopen`: as `CL` and `OP` they popped up
+  while typing CLOSE and OPEN.
+- The Programs view's refresh command is named **CL: Refresh Programs and Shared Storage**.
+
 ### 0.10.4
 
 - Hovers, inlay-hint tooltips and the CL Programs and Shared Storage tooltips show
