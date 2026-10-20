@@ -259,6 +259,13 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
+### 0.10.0
+
+- Inlay hints: after each use of a LOCAL, the storage element it is mapped onto (`NN(12)`,
+  `!BOX.FL(3)`); after each EXTERNAL entry and the bound point, its descriptor from the point
+  database. In CL files they show while Ctrl+Alt (Ctrl+Option on a Mac) is held;
+  `amcl.inlayHints.locals` and `amcl.inlayHints.points` turn each kind off.
+
 ### 0.9.2
 
 - Two LOCALs mapped on the same `NN` or `FL` element are reported (`local-alias`): a warning,
