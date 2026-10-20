@@ -14,7 +14,7 @@
 		"description": "SEND(WAIT)"
 	},
 	"CLOSE XV": {
-		"prefix": "CL",
+		"prefix": "xvclose",
 		"body": [
 			"SET $1.MODATTR=PROGRAM",
 			"CLOSE $1",
@@ -23,7 +23,7 @@
 		"description": "CLOSE XV"
 	},
 	"OPEN XV": {
-		"prefix": "OP",
+		"prefix": "xvopen",
 		"body": [
 			"SET $1.MODATTR=PROGRAM",
 			"OPEN $1",

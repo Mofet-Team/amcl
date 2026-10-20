@@ -2,7 +2,7 @@ import { Analysis } from './analyze';
 import { Expr, Ident } from './ast';
 import { ClSymbol } from './binder';
 import { Range } from './types';
-import { constantNumber, walk } from './walk';
+import { constantValue, walk } from './walk';
 
 /** Storage parameters of Process Module, box and Array points. */
 export const SLOT_PARAMS = new Set(['NN', 'FL', 'TIME', 'STR8', 'STR16', 'STR32', 'STR64']);
@@ -160,17 +160,8 @@ export function summarize(a: Analysis): FileSummary {
     declaration(d, unit, main) {
       if (d.kind !== 'local' || !d.at || d.at.index?.kind !== 'number') return;
       // A bound may be a constant of the routine or of its program: `LOCAL CNT=19+1`, `ARRAY(1..CNT)`.
-      const value = (x: Expr, depth = 0): number | undefined => {
-        if (depth > 8) return undefined;
-        if (x.kind === 'paren') return value(x.inner, depth + 1);
-        if (x.kind === 'binary' && (x.op === '+' || x.op === '-' || x.op === '*')) {
-          const [l, r] = [value(x.left, depth + 1), value(x.right, depth + 1)];
-          return l === undefined || r === undefined ? undefined : x.op === '+' ? l + r : x.op === '-' ? l - r : l * r;
-        }
-        if (x.kind !== 'name') return constantNumber(x);
-        const c = [...unit.declarations, ...(main?.declarations ?? [])].find((c) => c.kind === 'constant' && c.name.name === x.id.name);
-        return c?.kind === 'constant' ? value(c.value, depth + 1) : undefined;
-      };
+      const constants = [...unit.declarations, ...(main?.declarations ?? [])];
+      const value = (x: Expr) => constantValue(x, constants);
       const index = Number(d.at.index.value);
       const bound = main && (main.kind === 'sequence' || main.kind === 'block') ? main.point?.name : undefined;
       const range = { start: d.at.param.range.start, end: d.at.range.end };

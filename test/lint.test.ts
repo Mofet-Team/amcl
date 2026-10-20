@@ -220,6 +220,8 @@ describe('lint: compiler errors found before compiling', () => {
     expect(aliases('LOCAL A: NUMBER ARRAY (1..5) AT NN(10)\nLOCAL B AT NN(12)')).toEqual(['note 3: NN(12) is also A(3) (line 3): a store to either changes both']);
     expect(aliases('LOCAL A: NUMBER ARRAY (0..4) AT NN(10)\nLOCAL B: NUMBER ARRAY (1..3) AT NN(13)')).toEqual(['note 3: NN(13..14) is also in array A (line 3): a store to either changes both']);
     expect(aliases('LOCAL A AT NN(12)\nLOCAL B: NUMBER ARRAY (1..5) AT NN(10)')).toEqual(['note 3: NN(12) is also LOCAL A (line 3): a store to either changes both']);
+    // Bounds given by constants count, also in arithmetic.
+    expect(aliases('LOCAL CNT = 3+1\nLOCAL A: NUMBER ARRAY (1..CNT) AT NN(10)\nLOCAL B: NUMBER ARRAY (1..CNT) AT NN(13)')).toEqual(['note 4: NN(13) is also A(4) (line 4): a store to either changes both']);
     // Different elements, parameters or points are not aliases.
     expect(aliases('EXTERNAL R2\nLOCAL A AT NN(1)\nLOCAL B AT NN(2)\nLOCAL C: LOGICAL AT FL(1)\nLOCAL D AT R2.NN(1)\nLOCAL E: NUMBER ARRAY (1..5) AT NN(10)\nLOCAL F AT NN(15)')).toEqual([]);
   });

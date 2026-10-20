@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { TextDecoder } from 'util';
 import { URI } from 'vscode-uri';
@@ -82,10 +83,11 @@ export async function readText(p: string, decoder: TextDecoder, blankNul = false
 
 /** Resolve `amcl.pointDatabase` entries: absolute, `~/`, or relative to a workspace folder. */
 export function resolvePaths(entries: string[], workspaceRoots: string[]): string[] {
-  const home = process.env.HOME ?? process.env.USERPROFILE ?? '';
+  const home = os.homedir();
   const out: string[] = [];
   for (const e of entries) {
-    const expanded = e.startsWith('~/') ? path.join(home, e.slice(2)) : e;
+    // `~`, `~/db` and, on Windows, `~\db`.
+    const expanded = /^~([\\/]|$)/.test(e) ? path.join(home, e.slice(2)) : e;
     if (path.isAbsolute(expanded)) out.push(expanded);
     else for (const r of workspaceRoots) out.push(path.join(r, expanded));
   }

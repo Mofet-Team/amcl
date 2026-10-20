@@ -161,3 +161,16 @@ export function constantNumber(x: Expr): number | undefined {
   }
   return undefined;
 }
+
+/** A number from literals, named constants among `declarations`, parentheses and `+ - *`. */
+export function constantValue(x: Expr, declarations: Declaration[], depth = 0): number | undefined {
+  if (depth > 8) return undefined;
+  if (x.kind === 'paren') return constantValue(x.inner, declarations, depth + 1);
+  if (x.kind === 'binary' && (x.op === '+' || x.op === '-' || x.op === '*')) {
+    const [l, r] = [constantValue(x.left, declarations, depth + 1), constantValue(x.right, declarations, depth + 1)];
+    return l === undefined || r === undefined ? undefined : x.op === '+' ? l + r : x.op === '-' ? l - r : l * r;
+  }
+  if (x.kind !== 'name') return constantNumber(x);
+  const c = declarations.find((c) => c.kind === 'constant' && c.name.name === x.id.name);
+  return c?.kind === 'constant' ? constantValue(c.value, declarations, depth + 1) : undefined;
+}

@@ -1,5 +1,6 @@
 import { ChildProcess, spawn } from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pathToFileURL } from 'url';
@@ -360,5 +361,51 @@ describe.skipIf(!fs.existsSync(serverPath))('language server: a file too deep to
     const symbols = await client.request('textDocument/documentSymbol', { textDocument: { uri: 'file:///OK.CL' } });
     expect(symbols.map((s: any) => s.name)).toContain('OK');
     expect(proc.exitCode).toBeNull();
+  });
+});
+
+describe.skipIf(!fs.existsSync(serverPath))('language server: a point database outside the workspace', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'amcl-db-'));
+  const ws = path.join(root, 'ws');
+  const db = path.join(root, 'export');
+  const uri = pathToFileURL(path.join(ws, 'MIXER.CL')).toString();
+  const text = 'SEQUENCE MIXER (HPM; POINT MIXER)\nEXTERNAL DOSV\nPHASE P\nSET DOSV.PV = 1\nEND MIXER';
+  let proc: ChildProcess;
+  let client: Client;
+
+  beforeAll(async () => {
+    fs.mkdirSync(ws);
+    fs.mkdirSync(db);
+    fs.writeFileSync(path.join(ws, 'MIXER.CL'), text);
+    proc = spawn(process.execPath, [serverPath, '--stdio']);
+    client = new Client(proc);
+    await client.request('initialize', {
+      processId: null,
+      rootUri: null,
+      capabilities: {},
+      workspaceFolders: [{ uri: pathToFileURL(ws).toString(), name: 'ws' }],
+      initializationOptions: { encoding: 'utf8', pointDatabase: [db] },
+    });
+    client.notify('initialized', {});
+    client.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'cl', version: 1, text } });
+  });
+
+  afterAll(() => {
+    proc?.kill();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('reloads when an export there changes, without a reload of the window', async () => {
+    const position = pos(text, 'DOSV.PV');
+    const hover = () => client.request('textDocument/hover', { textDocument: { uri }, position });
+    // Let the watcher start before the export is written.
+    await new Promise((r) => setTimeout(r, 500));
+    fs.writeFileSync(path.join(db, 'HPM09.EB'), '{IDF NET>X>Y.DB, ENTITY DOSV( )}\n&T ANINNIM\n&N DOSV\nNODETYP  = HPM\nNTWKNUM  = 1\nNODENUM  = 9\nPTDESC   = "INVENTED DESC"\n');
+    let value = '';
+    for (let i = 0; i < 100 && !value.includes('INVENTED DESC'); i++) {
+      value = ((await hover()) as any)?.contents?.value ?? '';
+      if (!value.includes('INVENTED DESC')) await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(value).toContain('INVENTED DESC');
   });
 });

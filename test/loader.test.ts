@@ -24,3 +24,11 @@ describe('reading files', () => {
     expect(await readText(file, decoder, true)).toBe('&N A\nPTDESC   = "AB  "\n');
   });
 });
+
+describe('database paths', () => {
+  it('expands ~ the Unix and the Windows way', async () => {
+    const { resolvePaths } = await import('../src/server/loader');
+    const home = os.homedir();
+    expect(resolvePaths(['~', '~/db', '~\\db', 'db', '/abs'], ['/ws'])).toEqual([home, path.join(home, 'db'), path.join(home, 'db'), path.join('/ws', 'db'), '/abs']);
+  });
+});

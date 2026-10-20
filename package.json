@@ -210,7 +210,7 @@
       },
       {
         "command": "amcl.refreshPrograms",
-        "title": "Refresh",
+        "title": "Refresh Programs and Shared Storage",
         "category": "CL",
         "icon": "$(refresh)"
       },

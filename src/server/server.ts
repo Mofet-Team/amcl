@@ -313,6 +313,7 @@ connection.onInitialized(() => {
   });
   // Database-dependent checks of documents opened during indexing need the finished index.
   void indexWorkspace().then(republishAll).catch(logFailure('indexing'));
+  watchDatabaseFolders();
 });
 
 connection.onNotification('amcl/settings', (next: Settings) => {
@@ -324,19 +325,47 @@ connection.onNotification('amcl/settings', (next: Settings) => {
     JSON.stringify(next.pointDatabase ?? []) !== JSON.stringify(settings.pointDatabase ?? []);
   settings = next;
   decoder = decoderFor(settings.encoding);
+  if (reloadDb) watchDatabaseFolders();
   if (reloadAll) void indexWorkspace().then(republishAll).catch(logFailure('indexing'));
   else if (reloadDb) void loadPointDatabase().then(republishAll).catch(logFailure('loading the point database'));
   else republishAll();
 });
 
 let ebReload: NodeJS.Timeout | undefined;
+function reloadDatabaseSoon(): void {
+  clearTimeout(ebReload);
+  ebReload = setTimeout(() => void loadPointDatabase().then(republishAll).catch(logFailure('loading the point database')), 500);
+}
+
+/**
+ * The editor watches the workspace only; folders named in the settings may be elsewhere, often a
+ * share the database is exported to. Where watching is not possible, a reload picks up changes.
+ */
+let databaseWatchers: fs.FSWatcher[] = [];
+function watchDatabaseFolders(): void {
+  for (const w of databaseWatchers) w.close();
+  databaseWatchers = [];
+  const folders = new Set(resolvePaths([...(settings.pointDatabase ?? []), ...(settings.networkConfig ?? [])], workspaceRoots));
+  for (const folder of folders) {
+    try {
+      const w = fs.watch(folder, { recursive: true, persistent: false }, (_event, name) => {
+        const f = String(name ?? '');
+        if (!f || EB_FILE.test(f) || NCF_FILE.test(f)) reloadDatabaseSoon();
+      });
+      w.on('error', () => w.close());
+      databaseWatchers.push(w);
+    } catch {
+      // Missing, or recursive watching is not available here.
+    }
+  }
+}
+
 connection.onDidChangeWatchedFiles(({ changes }) => {
   for (const c of changes) {
     const p = uriToPath(c.uri);
     if (!p) continue;
     if (EB_FILE.test(p)) {
-      clearTimeout(ebReload);
-      ebReload = setTimeout(() => void loadPointDatabase().then(republishAll).catch(logFailure('loading the point database')), 500);
+      reloadDatabaseSoon();
     } else if (CL_FILE.test(p)) {
       if (c.type === FileChangeType.Deleted) {
         index.deleteFile(c.uri);

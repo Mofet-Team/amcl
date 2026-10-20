@@ -10,7 +10,7 @@ import { isViewOnly, typeHasParameter } from './pointParameters';
 import { Diagnostic, Range, Severity } from './types';
 import { BUILTINS } from './builtins';
 import { formatBox } from './workspace';
-import { constantNumber, walkExpr } from './walk';
+import { constantNumber, constantValue, walkExpr } from './walk';
 
 /** Point database access, when one is loaded. */
 export interface LintEnvironment {
@@ -96,16 +96,16 @@ class Linter {
       const dialect: Dialect | undefined =
         owner?.kind === 'block' ? 'AM' : owner?.kind === 'sequence' ? (owner.dialect?.name as Dialect | undefined) : undefined;
       const bound = owner && (owner.kind === 'sequence' || owner.kind === 'block') ? owner.point?.name : undefined;
-      this.unit(unit, dialect, bound);
+      this.unit(unit, dialect, bound, owner);
     }
   }
 
-  private unit(unit: Unit, dialect: Dialect | undefined, bound: string | undefined): void {
+  private unit(unit: Unit, dialect: Dialect | undefined, bound: string | undefined, owner: Unit | undefined): void {
     // The 8-character limit is the US's [HP27-610 §2.2.5.1]; CL/AM compiles longer names.
     if (unit.name && dialect !== 'AM' && ['sequence', 'handler', 'subroutine'].includes(unit.kind)) this.nameLength(unit.name, unit.kind);
     this.declarations(unit, dialect, bound);
     this.duplicateDeclarations(unit.declarations);
-    if (dialect && dialect !== 'AM') this.localStorage(unit, dialect, bound);
+    if (dialect && dialect !== 'AM') this.localStorage(unit, dialect, bound, owner);
     if (dialect && dialect !== 'AM') this.externalNetwork(unit, bound);
 
     const routines: Routine[] = [];
@@ -914,7 +914,9 @@ class Linter {
    * CL/PM) at an integer index, of the variable's type; another point's variables follow its
    * EXTERNAL; and one LOCAL names one variable.
    */
-  private localStorage(unit: Unit, dialect: Dialect, bound: string | undefined): void {
+  private localStorage(unit: Unit, dialect: Dialect, bound: string | undefined, owner: Unit | undefined): void {
+    // Array bounds may be named constants, here or in the program a handler belongs to.
+    const constants = owner && owner !== unit ? [...unit.declarations, ...owner.declarations] : unit.declarations;
     for (const d of unit.declarations) {
       if (d.kind !== 'local') continue;
       const t = d.type;
@@ -922,7 +924,7 @@ class Linter {
         this.report(t.states[0].range, 'local-type', 'A LOCAL state list has exactly two states (HP27-610 §2.6.2.1)', Severity.Error);
       }
       const bounds = t?.array?.[0];
-      const range = bounds?.kind === 'binary' && bounds.op === '..' ? [constantNumber(bounds.left), constantNumber(bounds.right)] : undefined;
+      const range = bounds?.kind === 'binary' && bounds.op === '..' ? [constantValue(bounds.left, constants), constantValue(bounds.right, constants)] : undefined;
       if (range && range[0] !== undefined && range[1] !== undefined && range[0] >= range[1]) {
         this.report(bounds!.range, 'array-bounds', 'The lower bound must be less than the upper bound (HP27-610 §2.6.2.2)', Severity.Error);
       }
