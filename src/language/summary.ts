@@ -33,6 +33,8 @@ export interface ProgramSummary {
   name: string;
   nameRange: Range;
   point?: string;
+  /** The bound point's name in the heading. */
+  pointRange?: Range;
   dialect?: string;
 }
 
@@ -132,6 +134,7 @@ export function summarize(a: Analysis): FileSummary {
           name: unit.name.name,
           nameRange: unit.name.range,
           point: unit.point?.name,
+          pointRange: unit.point?.range,
           dialect: unit.kind === 'sequence' ? unit.dialect?.name : undefined,
         });
       }

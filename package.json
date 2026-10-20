@@ -58,7 +58,8 @@
           "comments": false,
           "strings": false
         },
-        "outline.collapseItems": "alwaysCollapse"
+        "outline.collapseItems": "alwaysCollapse",
+        "editor.inlayHints.enabled": "offUnlessPressed"
       },
       "[cl-listing]": {
         "files.encoding": "windows1255",
@@ -85,6 +86,18 @@
           "default": [],
           "scope": "window",
           "markdownDescription": "Network configuration files (`NCF.XX`) of your LCNs, or folders holding them. They only name LCNs: which LCN each point is on is worked out from the code, and HPMs are identified by LCN, UCN and node. With `A/sys/NCF.XX` and `B/sys/NCF.XX` the LCNs are shown as A and B."
+        },
+        "amcl.inlayHints.locals": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "markdownDescription": "Show the storage element a LOCAL is mapped onto after each use of it, such as `NN(12)` or `!BOX.FL(3)`. In CL files inlay hints show while Ctrl+Alt (Ctrl+Option on a Mac) is held; set `#editor.inlayHints.enabled#` to `on` for `[cl]` to show them always."
+        },
+        "amcl.inlayHints.points": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "markdownDescription": "Show the descriptor from the point database (the point type when it has none) after each `EXTERNAL` entry and the bound point of a program; hover the hint for both."
         },
         "amcl.hebrewDescriptors": {
           "type": "string",

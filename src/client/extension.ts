@@ -20,6 +20,10 @@ function settings() {
     disabledDiagnostics: workspace.getConfiguration('amcl').get<string[]>('diagnostics.disabled') ?? [],
     networkConfig: workspace.getConfiguration('amcl').get<string[]>('networkConfig') ?? [],
     lineLength: workspace.getConfiguration('amcl').get<number>('lineLength') ?? 132,
+    inlayHints: {
+      locals: workspace.getConfiguration('amcl').get<boolean>('inlayHints.locals') ?? true,
+      points: workspace.getConfiguration('amcl').get<boolean>('inlayHints.points') ?? true,
+    },
   };
 }
 

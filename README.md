@@ -160,6 +160,11 @@ parameter lists and enumerations.
     "maxLineLength": 132
   }
   ```
+- **Inlay hints**: after each use of a LOCAL, the storage element it is mapped onto (`NN(12)`,
+  `!BOX.FL(3)`); after each EXTERNAL entry and the bound point, its descriptor from the point
+  database. They show while Ctrl+Alt (Ctrl+Option on a Mac) is held; to show them always, set
+  `"[cl]": { "editor.inlayHints.enabled": "on" }`. `amcl.inlayHints.locals` and
+  `amcl.inlayHints.points` turn each kind off.
 - **CL Programs** view in the Explorer: every program of the workspace by where it runs, LCN and
   HPM (UCN/node), then each program's phases with their steps, handlers and subroutines. A
   click opens the code. Programs marked red have errors in their `.LE`; yellow ones changed

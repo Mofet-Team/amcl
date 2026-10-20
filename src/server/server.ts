@@ -59,6 +59,7 @@ import {
 } from '../shared/programs';
 import { prepareRename, rename } from './features/rename';
 import { storeUses } from './features/stores';
+import { inlayHints, InlayHintOptions } from './features/inlayHints';
 
 /** Settings under `amcl.*`, plus the encoding VS Code uses for CL files. */
 interface Settings {
@@ -72,6 +73,7 @@ interface Settings {
   networkConfig?: string[];
   /** Characters per line past which code is reported; the compiler reads 132. */
   lineLength?: number;
+  inlayHints?: InlayHintOptions;
 }
 
 const CL_FILE = /\.cl$/i;
@@ -277,6 +279,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       codeActionProvider: { codeActionKinds: [CodeActionKind.QuickFix] },
       documentRangeFormattingProvider: true,
       hoverProvider: true,
+      inlayHintProvider: true,
       completionProvider: { triggerCharacters: ['.'] },
       signatureHelpProvider: { triggerCharacters: ['(', ','], retriggerCharacters: [';'] },
     },
@@ -387,6 +390,8 @@ function publishClosed(clPath: string): void {
 
 /** Re-check open documents when something they depend on changes (settings, the index). */
 function republishAll(): void {
+  // Point types and descriptors come from the database.
+  void connection.languages.inlayHint.refresh().catch(() => undefined);
   for (const doc of documents.all()) publishDiagnostics(doc);
   for (const uri of [...closedPublished]) {
     const p = uriToPath(uri);
@@ -523,6 +528,12 @@ connection.onHover(({ textDocument, position }) => {
     hover({ uri: doc.uri, analysis, summary, index, lines: doc.getText().split(/\r?\n|\r/), display }, position) ?? null,
   );
 });
+
+connection.languages.inlayHint.on(({ textDocument, range }) =>
+  withDoc(textDocument.uri, [], (doc, _analysis, summary) =>
+    inlayHints(summary, index, doc.getText().split(/\r?\n|\r/), range, settings.inlayHints ?? { locals: true, points: true }),
+  ),
+);
 
 connection.onCompletion(({ textDocument, position }) =>
   withDoc(textDocument.uri, null, (doc, analysis) =>
