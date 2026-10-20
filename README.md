@@ -261,6 +261,11 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
+### 0.10.3
+
+- Point descriptors show after each use of a point in the code, once per line and after the
+  whole access (`TAG.PV «descriptor»`), and after every EXTERNAL entry again, like LOCAL slots.
+
 ### 0.10.2
 
 - Inlay hints on LOCAL arrays: `A(2)` shows its element, `NN(6)`, and the whole array or a
