@@ -259,6 +259,17 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
+### 0.10.1
+
+- Windows: a file open in the editor was also indexed under a second spelling of its path, so
+  references, programs and other names for a storage element could show twice, and deleted or
+  discarded files stayed in the index.
+- A file nested too deep for the checks no longer stops the language server; it is logged and
+  its checks are skipped.
+- Formatting never moves code across column 132, whatever `maxLineLength` or `amcl.lineLength`
+  allow: the compiler drops what is past it without a message.
+- Point database files with NUL bytes in their fields are read instead of skipped.
+
 ### 0.10.0
 
 - Inlay hints: after each use of a LOCAL, the storage element it is mapped onto (`NN(12)`,
