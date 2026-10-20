@@ -261,6 +261,13 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
+### 0.10.2
+
+- Inlay hints on LOCAL arrays: `A(2)` shows its element, `NN(6)`, and the whole array or a
+  variable subscript the range, `NN(5..7)`. Bounds given by constants (`LOCAL CNT=19+1`) count.
+- Point descriptors show only for EXTERNAL entries alone on their line, so packed lists no
+  longer run past column 132; a point without a descriptor shows its type in brackets.
+
 ### 0.10.1
 
 - Windows: a file open in the editor was also indexed under a second spelling of its path, so
