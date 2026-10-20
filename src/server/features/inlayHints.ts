@@ -5,6 +5,7 @@ import { FileSummary, StorageUse } from '../../language/summary';
 import { Position, Range } from '../../language/types';
 import { constantNumber, walk } from '../../language/walk';
 import { WorkspaceIndex } from '../../language/workspace';
+import { escapeMarkdown } from '../../shared/markdown';
 
 export interface InlayHintOptions {
   /** The storage element after each use of a LOCAL. */
@@ -84,7 +85,7 @@ function pointHints(a: Analysis, summary: FileSummary, index: WorkspaceIndex, wi
       // The descriptor tells points apart; a type in brackets is not mistaken for one.
       label: desc || `[${type}]`,
       paddingLeft: true,
-      tooltip: { kind: MarkupKind.Markdown, value: `**${p.name}** · ${type}${desc ? `\n\n${desc}` : ''}` },
+      tooltip: { kind: MarkupKind.Markdown, value: `**${escapeMarkdown(p.name)}** · ${type}${desc ? `\n\n${escapeMarkdown(desc)}` : ''}` },
     });
   }
 }

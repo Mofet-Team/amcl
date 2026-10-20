@@ -9,6 +9,7 @@ import { rangeContains } from '../../language/types';
 import { formatBox, HARDWARE_NAME, HardwareUse, WorkspaceIndex } from '../../language/workspace';
 import { classifyPoint, programAt, splitComment } from './shared';
 import { targetAt } from './crossfile';
+import { escapeMarkdown as esc, markdownCode as inline } from '../../shared/markdown';
 
 export interface HoverContext {
   uri: string;
@@ -69,7 +70,7 @@ export function hover(ctx: HoverContext, pos: Position): Hover | undefined {
 function localBlock(ctx: HoverContext, sym: ClSymbol): string {
   const { comment } = splitComment(ctx.lines[sym.range.start.line] ?? '');
   const parts = [`\`\`\`cl\n${sym.ident.text}: ${sym.detail ?? 'NUMBER'}\n\`\`\``];
-  if (comment) parts.push(comment);
+  if (comment) parts.push(esc(comment));
   return parts.join('\n\n');
 }
 
@@ -79,7 +80,7 @@ function declarationBlock(ctx: HoverContext, sym: ClSymbol): string {
   const { code, comment } = splitComment(line);
   const what = KIND_LABEL[sym.kind];
   const parts = [`\`\`\`cl\n${code.trim()}\n\`\`\``];
-  if (comment) parts.push(comment);
+  if (comment) parts.push(esc(comment));
   if (what && !code.trim().toUpperCase().startsWith(what.toUpperCase())) parts.unshift(`*${what}*`);
   return parts.join('\n\n');
 }
@@ -91,12 +92,12 @@ function storageSection(ctx: HoverContext, key: string, ownName: string | undefi
   else out.push(`Storage: ${index.describeKey(key)}`);
 
   const point = index.storagePoint(key);
-  if (point && point.name !== ownName) out.push(`Point **${point.name}**${point.fields.PTDESC ? `: ${point.fields.PTDESC}` : ''}`);
+  if (point && point.name !== ownName) out.push(`Point **${esc(point.name)}**${point.fields.PTDESC ? `: ${esc(point.fields.PTDESC)}` : ''}`);
 
   // Leave out the hovered LOCAL itself.
   const others = index.storageLocals(key).filter((l) => !(l.name === ownName && l.uri === ctx.uri));
   if (others.length) {
-    const shown = others.slice(0, MAX_ALIASES).map((l) => `\`${l.name}\` in ${link(ctx, l.uri, l.range.start.line)}`);
+    const shown = others.slice(0, MAX_ALIASES).map((l) => `${inline(l.name)} in ${link(ctx, l.uri, l.range.start.line)}`);
     const more = others.length > MAX_ALIASES ? `, and ${others.length - MAX_ALIASES} more` : '';
     out.push(`Also mapped as ${shown.join(', ')}${more}`);
   }
@@ -111,32 +112,32 @@ function pointSection(ctx: HoverContext, name: string): string | undefined {
 
   const out: string[] = [];
   const type = p ? POINT_TYPES[p.type] ?? p.type : 'Point';
-  out.push(`**${p?.name ?? name.toUpperCase()}** · ${type}`);
-  if (p?.fields.PTDESC) out.push(p.fields.PTDESC);
+  out.push(`**${esc(p?.name ?? name.toUpperCase())}** · ${type}`);
+  if (p?.fields.PTDESC) out.push(esc(p.fields.PTDESC));
 
   if (p) {
     const facts: string[] = [];
     const ucn = fieldNumber(p, 'NTWKNUM');
     const node = fieldNumber(p, 'NODENUM');
     const lcn = index.networkOf(p);
-    if (ucn !== undefined && node !== undefined) facts.push(`${p.fields.NODETYP ?? 'node'} ${pad(ucn)}/${pad(node)}${lcn ? ` (LCN ${lcn})` : ''}`);
+    if (ucn !== undefined && node !== undefined) facts.push(`${esc(p.fields.NODETYP ?? 'node')} ${pad(ucn)}/${pad(node)}${lcn ? ` (LCN ${esc(lcn)})` : ''}`);
     // Where the point is: its I/O channel, its wiring, its box element, or its controller slot.
     const io = ioOf(p);
-    if (io?.channel) facts.push(`I/O \`${io.channel.address}\`${io.channel.card ? ` (${io.channel.card})` : ''}`);
+    if (io?.channel) facts.push(`I/O ${inline(io.channel.address)}${io.channel.card ? ` (${esc(io.channel.card)})` : ''}`);
     else if (p.type === 'NUMERNIM' || p.type === 'FLAGNIM') facts.push(`${p.type === 'NUMERNIM' ? 'NN' : 'FL'}(${p.fields.SLOTNUM})`);
-    else if (!io && p.fields.SLOTNUM) facts.push(`slot ${p.fields.SLOTNUM}`);
-    if (p.fields.UNIT) facts.push(`unit ${p.fields.UNIT}`);
-    if (p.fields.EUDESC) facts.push(`EU ${p.fields.EUDESC}`);
-    if (p.fields.KEYWORD) facts.push(`keyword ${p.fields.KEYWORD}`);
-    if (p.fields.ASSOCDSP) facts.push(`display ${p.fields.ASSOCDSP}`);
+    else if (!io && p.fields.SLOTNUM) facts.push(`slot ${esc(p.fields.SLOTNUM)}`);
+    if (p.fields.UNIT) facts.push(`unit ${esc(p.fields.UNIT)}`);
+    if (p.fields.EUDESC) facts.push(`EU ${esc(p.fields.EUDESC)}`);
+    if (p.fields.KEYWORD) facts.push(`keyword ${esc(p.fields.KEYWORD)}`);
+    if (p.fields.ASSOCDSP) facts.push(`display ${esc(p.fields.ASSOCDSP)}`);
     if (facts.length) out.push(facts.join(' · '));
     if (io && !io.channel) {
-      const list = (xs: string[]) => xs.map((x) => `\`${x}\``).join(', ');
+      const list = (xs: string[]) => xs.map(inline).join(', ');
       const wiring = [io.inputs.length ? `In: ${list(io.inputs)}` : '', io.outputs.length ? `Out: ${list(io.outputs)}` : ''];
       out.push(wiring.filter(Boolean).join(' · '));
     }
     const states = pointStates(p);
-    if (states.length) out.push(`States: ${states.map((st, i) => `${i} \`${st}\``).join(' · ')}`);
+    if (states.length) out.push(`States: ${states.map((st, i) => `${i} ${inline(st)}`).join(' · ')}`);
     out.push(`Defined in ${link(ctx, index.pointLocation(p.name)!.uri, p.line)}`);
     // A box Numeric or Flag point is a name for one box element; show who else uses it.
     const slot = fieldNumber(p, 'SLOTNUM');
@@ -146,7 +147,7 @@ function pointSection(ctx: HoverContext, name: string): string | undefined {
     }
   }
   for (const prog of programs) {
-    out.push(`${prog.kind === 'sequence' ? 'SEQUENCE' : 'BLOCK'} ${prog.name} in ${link(ctx, prog.uri, prog.range.start.line)}`);
+    out.push(`${prog.kind === 'sequence' ? 'SEQUENCE' : 'BLOCK'} ${esc(prog.name)} in ${link(ctx, prog.uri, prog.range.start.line)}`);
   }
   return out.join('\n\n');
 }
@@ -157,10 +158,10 @@ function parameterSection(ctx: HoverContext, object: string, param: string): str
   const p = ctx.index.point(object);
   const uses = type ? ctx.index.parameterUse(type).get(param.toUpperCase()) : undefined;
   if (!info && !uses) return undefined;
-  const out = [`**${object.toUpperCase()}.${param.toUpperCase()}**${info ? ` · ${TYPE_NAMES[info.type]}` : ''}`];
+  const out = [`**${esc(`${object.toUpperCase()}.${param.toUpperCase()}`)}**${info ? ` · ${TYPE_NAMES[info.type]}` : ''}`];
   if (info) out.push(info.description);
   const states = info?.type === 'SDE' && p ? pointStates(p) : info?.states;
-  if (states?.length) out.push(`States: ${states.map((s) => `\`${s}\``).join(' · ')}`);
+  if (states?.length) out.push(`States: ${states.map(inline).join(' · ')}`);
   if (uses && type) out.push(`Used ${uses}× on ${POINT_TYPES[type] ?? type} points in the workspace`);
   return out.join('\n\n');
 }
@@ -172,7 +173,7 @@ function hardwareSection(ctx: HoverContext, name: string, pos: Position): string
   const box = bound ? ctx.index.boxOfProgram(bound) : undefined;
   const uses = ctx.index.hardwareUses(name, box);
   const where = box ? ` in ${formatBox(box)}` : '';
-  const out = [`**${name.toUpperCase()}** · ${CHANNEL_KIND[kind.toUpperCase()]} card ${card}, channel ${channel}${where}`];
+  const out = [`**${esc(name.toUpperCase())}** · ${CHANNEL_KIND[kind.toUpperCase()]} card ${card}, channel ${channel}${where}`];
   if (!uses.length) {
     out.push(`Nothing in the point database is connected to this channel${where}.`);
     return out.join('\n\n');
@@ -180,8 +181,8 @@ function hardwareSection(ctx: HoverContext, name: string, pos: Position): string
   const role = (u: HardwareUse) => (u.role === 'channel' ? 'built on this channel' : `${u.role}${u.param ? ` .${u.param}` : ''}`);
   const lines = uses.map((u) => {
     const at = box ? '' : ` (${formatBox(u.box)})`;
-    const desc = u.point.fields.PTDESC ? ` · ${u.point.fields.PTDESC}` : '';
-    return `- **${u.point.name}**${at} · ${POINT_TYPES[u.point.type] ?? u.point.type}, ${role(u)}${desc}`;
+    const desc = u.point.fields.PTDESC ? ` · ${esc(u.point.fields.PTDESC)}` : '';
+    return `- **${esc(u.point.name)}**${at} · ${POINT_TYPES[u.point.type] ?? u.point.type}, ${role(u)}${desc}`;
   });
   out.push(lines.join('\n'));
   return out.join('\n\n');
@@ -229,7 +230,7 @@ const KIND_LABEL: Partial<Record<ClSymbol['kind'], string>> = {
 
 
 function link(ctx: HoverContext, uri: string, line: number): string {
-  return `[${ctx.display(uri)}:${line + 1}](${uri}#L${line + 1})`;
+  return `[${esc(ctx.display(uri))}:${line + 1}](${uri}#L${line + 1})`;
 }
 
 function pad(n: number): string {

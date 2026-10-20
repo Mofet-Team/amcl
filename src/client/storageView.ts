@@ -3,6 +3,7 @@ import { LanguageClient } from 'vscode-languageclient/node';
 import { SHARED_STORAGE_REQUEST, STORAGE_ACCESSES_REQUEST, StorageAccess, StorageSlot } from '../shared/programs';
 import { openEntryCommand } from './openEntry';
 import { UNKNOWN_LCN, UNPLACED_HPMS, UNPLACED_HPMS_TOOLTIP } from './programsView';
+import { escapeMarkdown as esc } from '../shared/markdown';
 
 const UNKNOWN_LCN_TOOLTIP =
   'Storage in HPMs the point database does not place, used only by programs whose LCN is not known either.';
@@ -113,10 +114,10 @@ export class StorageView implements TreeDataProvider<Node> {
         if (s.tag) item.iconPath = new ThemeIcon('tag');
         item.tooltip = new MarkdownString(
           [
-            `**${s.owner === 'Box' ? `${s.hpm} box` : s.owner} ${s.param}(${s.index})**`,
-            s.tag && `Tag **${s.tag}**${s.tagDescriptor ? `: ${s.tagDescriptor}` : ''}, a box ${s.param === 'FL' ? 'Flag' : 'Numeric'} point: displays and other systems can read and write it.`,
+            `**${esc(`${s.owner === 'Box' ? `${s.hpm} box` : s.owner} ${s.param}(${s.index})`)}**`,
+            s.tag && `Tag **${esc(s.tag)}**${s.tagDescriptor ? `: ${esc(s.tagDescriptor)}` : ''}, a box ${s.param === 'FL' ? 'Flag' : 'Numeric'} point: displays and other systems can read and write it.`,
             `Used by ${who}.`,
-            locals.length ? `LOCAL names: ${locals.join(', ')}` : 'Accessed directly only.',
+            locals.length ? `LOCAL names: ${esc(locals.join(', '))}` : 'Accessed directly only.',
           ]
             .filter(Boolean)
             .join('\n\n'),

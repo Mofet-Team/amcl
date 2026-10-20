@@ -190,3 +190,39 @@ describe('outline: CL words', () => {
     expect(detail('SUB')).toMatch(/^(unused · )?SUBROUTINE$/);
   });
 });
+
+describe('markdown from source and database text', () => {
+  it('shows it literally', async () => {
+    const { escapeMarkdown } = await import('../src/shared/markdown');
+    expect(escapeMarkdown('*AUTO* ![x](http://h/i.png) <b>')).toBe('\\*AUTO\\* !\\[x\\](http://h/i.png) \\<b\\>');
+    expect(escapeMarkdown('- PUMP 2. ON')).toBe('\\- PUMP 2. ON');
+    expect(escapeMarkdown('1. STEP')).toBe('1\\. STEP');
+    expect(escapeMarkdown('REACT1.PV TANK_LVL _X_')).toBe('REACT1.PV TANK_LVL \\_X\\_');
+  });
+
+  it('keeps a comment from making a link or image in a hover', () => {
+    const text = 'SEQUENCE S (HPM; POINT S)\nLOCAL X AT NN(1) -- see ![a](http://h/i.png)\nPHASE P\nSET X = 1\nEND S';
+    const analysis = analyze(text);
+    const h = hover(
+      { uri: 'u', analysis, summary: summarize(analysis), index: new WorkspaceIndex(), lines: text.split('\n'), display: (u) => u },
+      pos(text, 'X =', 0),
+    );
+    const value = (h!.contents as { value: string }).value;
+    expect(value).toContain('!\\[a\\](http://h/i.png)');
+    expect(value).not.toMatch(/[^\\]\]\(/);
+  });
+});
+
+describe('inline code from database text', () => {
+  it('cannot be ended early by a backtick', async () => {
+    const { markdownCode } = await import('../src/shared/markdown');
+    expect(markdownCode('ON')).toBe('`ON`');
+    expect(markdownCode('A`B')).toBe('`` A`B ``');
+  });
+
+  it('keeps rules and list marks at line start literal', async () => {
+    const { escapeMarkdown } = await import('../src/shared/markdown');
+    expect(escapeMarkdown('---')).toBe('\\---');
+    expect(escapeMarkdown('1) STEP')).toBe('1\\) STEP');
+  });
+});

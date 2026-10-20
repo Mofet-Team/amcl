@@ -2,6 +2,7 @@ import { Diagnostic, DiagnosticSeverity, DocumentSymbol, Hover, MarkupKind, Posi
 import { ListedLine, Listing, ListingMessage } from '../../language/listing';
 import { describeSource } from '../../language/messages';
 import { Severity } from '../../language/types';
+import { escapeMarkdown } from '../../shared/markdown';
 
 export const COMPILER_SOURCE = 'CL compiler';
 
@@ -83,7 +84,7 @@ export function listedLineAt(listing: Listing, line: number): { listed: ListedLi
 export function listingHover(listing: Listing, position: Position): Hover | undefined {
   const m = listing.messages.find((x) => x.listingLine === position.line);
   if (!m) return undefined;
-  const lines = [`**${m.text}**`];
+  const lines = [`**${escapeMarkdown(m.text)}**`];
   if (m.catalog) {
     lines.push('', `${m.catalog.severity}, reported by ${describeSource(m.catalog.source)}.`);
     if (m.catalog.severity === 'Fatal') lines.push('', 'The compiler stopped here: later errors may be hidden.');

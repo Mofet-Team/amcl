@@ -198,6 +198,7 @@ async function indexFile(p: string): Promise<void> {
   const uri = pathToUri(p);
   if (documents.get(uri)) return; // the open document is the source of truth
   const text = await readText(p, decoder);
+  if (documents.get(uri)) return; // opened while reading
   if (text === undefined) {
     index.deleteFile(uri);
     viewsMayChange(uri, undefined);
@@ -208,7 +209,12 @@ async function indexFile(p: string): Promise<void> {
   }
 }
 
+/** Bumped by each load and scan: one started later supersedes it, and its results are dropped. */
+let dbGeneration = 0;
+let scanGeneration = 0;
+
 async function loadPointDatabase(): Promise<void> {
+  const generation = ++dbGeneration;
   const roots = [...workspaceRoots, ...resolvePaths(settings.pointDatabase ?? [], workspaceRoots)];
   const files = await findFiles(roots, EB_FILE);
   const records: PointRecord[] = [];
@@ -217,8 +223,6 @@ async function loadPointDatabase(): Promise<void> {
     const text = await readText(f, decoder, true);
     if (text) records.push(...parseEb(text, f));
   }
-  if (settings.hebrewDescriptors !== 'asStored') orientDescriptors(records);
-  index.setPoints(records, pathToUri);
   const networks: NetworkConfig[] = [];
   for (const f of await findFiles(resolvePaths(settings.networkConfig ?? [], workspaceRoots), NCF_FILE)) {
     // The file holds binary fields; its text parts are ASCII.
@@ -226,6 +230,9 @@ async function loadPointDatabase(): Promise<void> {
     const ncf = text && parseNcf(text, f);
     if (ncf) networks.push(ncf);
   }
+  if (generation !== dbGeneration) return;
+  if (settings.hebrewDescriptors !== 'asStored') orientDescriptors(records);
+  index.setPoints(records, pathToUri);
   index.setNetworks(networks);
   indexChanged();
   connection.console.info(`amcl: point database: ${index.pointCount} points from ${files.length} .EB files`);
@@ -244,10 +251,12 @@ function warnIfMissing(name: string, entries: string[] | undefined, found: boole
 async function indexWorkspace(): Promise<void> {
   const progress = await connection.window.createWorkDoneProgress();
   progress.begin('Indexing CL files', 0, undefined, false);
+  const generation = ++scanGeneration;
   try {
     await loadPointDatabase();
     const files = await findFiles(workspaceRoots, CL_FILE);
     for (let i = 0; i < files.length; i++) {
+      if (generation !== scanGeneration) return;
       await indexFile(files[i]);
       if (i % 50 === 0) {
         progress.report(Math.round((i / files.length) * 100), `${i} / ${files.length}`);
@@ -257,7 +266,9 @@ async function indexWorkspace(): Promise<void> {
     }
     connection.console.info(`amcl: indexed ${index.fileCount} CL files`);
     listings.clear();
-    for (const p of await findFiles(workspaceRoots, /\.le$/i)) {
+    const errorListings = await findFiles(workspaceRoots, /\.le$/i);
+    if (generation !== scanGeneration) return;
+    for (const p of errorListings) {
       const source = listings.sourceOf(p);
       if (source) publishClosed(source);
     }
