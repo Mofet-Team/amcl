@@ -162,9 +162,9 @@ parameter lists and enumerations.
   ```
 - **Inlay hints**: after each use of a LOCAL, the storage element it is mapped onto (`NN(12)`,
   `!BOX.FL(3)`); for an array, the element (`A(2)` is `NN(6)`) or the range it covers
-  (`NN(5..7)`). After the bound point and each EXTERNAL entry alone on its line, its descriptor
-  from the point database, or its `[type]` when it has none; entries packed several to a line
-  show on hover instead. They show while Ctrl+Alt (Ctrl+Option on a Mac) is held; to show them always, set
+  (`NN(5..7)`). After each use of a point (once per line, after the whole `TAG.PV`), its EXTERNAL
+  entry and the bound point, its descriptor from the point database, or its `[type]` when it
+  has none. They show while Ctrl+Alt (Ctrl+Option on a Mac) is held; to show them always, set
   `"[cl]": { "editor.inlayHints.enabled": "on" }`. `amcl.inlayHints.locals` and
   `amcl.inlayHints.points` turn each kind off.
 - **CL Programs** view in the Explorer: every program of the workspace by where it runs, LCN and

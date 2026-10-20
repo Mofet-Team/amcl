@@ -9,7 +9,7 @@ import { WorkspaceIndex } from '../../language/workspace';
 export interface InlayHintOptions {
   /** The storage element after each use of a LOCAL. */
   locals: boolean;
-  /** The descriptor (else the type) after the bound point and each EXTERNAL entry alone on its line. */
+  /** The descriptor (else the type) after each use of a point, its EXTERNAL entry and the bound point. */
   points: boolean;
 }
 
@@ -58,24 +58,29 @@ function slotLabel(use: StorageUse, whole: boolean): string {
 }
 
 function pointHints(a: Analysis, summary: FileSummary, index: WorkspaceIndex, within: (r: Range) => boolean, out: InlayHint[]): void {
-  // Lists packed several to a line would run far past column 132; their points show on hover.
-  const perLine = new Map<number, number>();
+  // `TAG.PV` and `TAG.SO(2)`: the descriptor goes after the access, not between the tag and its parameter.
+  const endOf = new Map<string, Position>();
   walk(a.file, {
-    declaration(d) {
-      if (d.kind === 'external') for (const n of d.names) perLine.set(n.range.start.line, (perLine.get(n.range.start.line) ?? 0) + 1);
+    expr(e) {
+      const member = e.kind === 'member' ? e : e.kind === 'apply' && e.callee.kind === 'member' ? e.callee : undefined;
+      if (member?.object.kind !== 'name') return;
+      const k = key(member.object.id.range.start);
+      const seen = endOf.get(k);
+      if (!seen || before(seen, e.range.end)) endOf.set(k, e.range.end);
     },
   });
-  const headings = summary.programs.flatMap((p) => (p.pointRange ? [p.pointRange] : []));
+  // Once per line: `IF T.PV<>0 AND T.PV<>165` needs it after the first use only.
+  const shown = new Set<string>();
   for (const ref of summary.pointRefs) {
-    if (!within(ref.range)) continue;
-    const heading = headings.some((h) => sameStart(h, ref.range));
-    if (!heading && !(ref.isDeclaration && perLine.get(ref.range.start.line) === 1)) continue;
     const p = index.point(ref.name);
-    if (!p) continue;
+    if (!p || shown.has(`${ref.range.start.line}|${p.name}`)) continue;
+    shown.add(`${ref.range.start.line}|${p.name}`);
+    const position = endOf.get(key(ref.range.start)) ?? ref.range.end;
+    if (!within({ start: ref.range.start, end: position })) continue;
     const type = POINT_TYPES[p.type] ?? p.type;
     const desc = p.fields.PTDESC?.trim();
     out.push({
-      position: ref.range.end,
+      position,
       // The descriptor tells points apart; a type in brackets is not mistaken for one.
       label: desc || `[${type}]`,
       paddingLeft: true,

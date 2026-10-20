@@ -25,6 +25,7 @@ const src = [
   'SET A(N) = 0',
   'CALL SUM (A, N)',
   'SET B(4) = B(1)',
+  'SET R2TC2.NN(3) = R2TC2.NN(4)',
   'END S1',
 ].join('\n');
 
@@ -61,12 +62,22 @@ describe('inlay hints', () => {
     ]);
   });
 
-  it('shows the descriptor, else the type in brackets, of the bound point and of EXTERNAL entries alone on their line', () => {
-    expect(hints({ locals: false, points: true })).toEqual(['1:29 Mixer program', '8:14 Second line', '9:14 [Regulatory Control]']);
+  it('shows the descriptor, else the type in brackets, after the bound point, each EXTERNAL entry and each use', () => {
+    expect(hints({ locals: false, points: true })).toEqual([
+      '1:29 Mixer program',
+      '2:19 Dosing line',
+      '2:25 [Regulatory Control]',
+      '8:14 Second line',
+      '9:14 [Regulatory Control]',
+      // After the whole access: `DOSV.PV`, `R2TC2.NN(3)`.
+      '11:10 Dosing line',
+      '12:15 [Regulatory Control]',
+      '17:15 [Regulatory Control]',
+    ]);
   });
 
   it('gives only the hints in the range asked for, and none when turned off', () => {
-    expect(hints(undefined, { start: { line: 11, character: 0 }, end: { line: 11, character: 99 } })).toEqual(['12:5 NN(12)']);
+    expect(hints(undefined, { start: { line: 11, character: 0 }, end: { line: 11, character: 99 } })).toEqual(['12:5 NN(12)', '12:15 [Regulatory Control]']);
     expect(hints({ locals: false, points: false })).toEqual([]);
   });
 });

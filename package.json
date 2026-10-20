@@ -97,7 +97,7 @@
           "type": "boolean",
           "default": true,
           "scope": "window",
-          "markdownDescription": "Show the descriptor from the point database (the point type in brackets when it has none) after the bound point of a program and each `EXTERNAL` entry alone on its line; hover the hint for both. Entries packed several to a line show on hover instead."
+          "markdownDescription": "Show the descriptor from the point database (the point type in brackets when it has none) after each use of a point, once per line, and after its `EXTERNAL` entry and the bound point of a program; hover the hint for both."
         },
         "amcl.hebrewDescriptors": {
           "type": "string",
