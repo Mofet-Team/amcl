@@ -136,6 +136,8 @@ export interface Routine {
 
 export interface Phase {
   name?: Ident;
+  /** Stands in for the missing heading of code without one; no PHASE line. */
+  implicit?: boolean;
   alarm?: Expr;
   keepEnb: boolean;
   handlers: HandlerRef[];

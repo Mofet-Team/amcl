@@ -993,7 +993,8 @@ class Linter {
   }
 
   private declarationsBeforePhases(unit: Extract<Unit, { kind: 'sequence' }>): void {
-    const first = unit.phases[0];
+    // Without a heading, declarations before the first real PHASE are where they belong.
+    const first = unit.phases.find((p) => !p.implicit);
     if (!first) return;
     for (const d of unit.declarations) {
       if (d.kind !== 'directive' && d.range.start.line > first.range.start.line) {

@@ -70,6 +70,12 @@ describe('lint', () => {
     expect(codes(hpm('EXIT'))).toEqual([]);
   });
 
+  it('does not report declarations after a commented-out heading, only after a PHASE', () => {
+    const body = 'LOCAL X AT NN(1)\nLOCAL Y AT NN(2)\nPHASE P\nSET X = 1\nSET Y = 2\nEND S';
+    expect(codes(`-- SEQUENCE S (HPM; POINT S)\n${body}`)).toEqual([]);
+    expect(codes(`-- SEQUENCE S (HPM; POINT S)\n${body.replace('PHASE P\n', 'PHASE P\nLOCAL Z AT NN(3)\nSET Z = 0\n')}`)).toEqual(['decl-after-phase']);
+  });
+
   it('reports duplicate labels, steps, phases and declarations', () => {
     const src = 'SEQUENCE S (HPM; POINT S)\nLOCAL A AT NN(1)\nLOCAL A AT NN(2)\nPHASE P\nSTEP X\nL: SET A = 1\nGOTO L\nSTEP X\nEXIT\nPHASE P\nEXIT\nEND S';
     expect(check(src).filter((m) => m.startsWith('duplicate'))).toEqual([

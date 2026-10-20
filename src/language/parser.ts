@@ -251,7 +251,7 @@ class Parser {
         const routine: Routine = { statements: [], steps: [] };
         const implicit: Unit = {
           kind: 'sequence', declarations: [], headerRange: tokenRange(first), range: tokenRange(first),
-          phases: [{ keepEnb: false, handlers: [], routine, range: tokenRange(first) }],
+          phases: [{ implicit: true, keepEnb: false, handlers: [], routine, range: tokenRange(first) }],
         };
         this.parseBody(implicit, { phases: implicit.phases, routine, implicit: true });
         units.push(implicit);
