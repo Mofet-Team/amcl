@@ -81,6 +81,11 @@ const EB_FILE = /\.eb$/i;
 const NCF_FILE = /(^|[\\/])NCF[^\\/]*\.(XX|WF)$/i;
 
 const connection = createConnection(ProposedFeatures.all);
+
+const logFailure = (what: string) => (err: unknown) => connection.console.error(`amcl: ${what} failed: ${(err as Error)?.stack ?? err}`);
+// One bad file or request must not end the server for the whole workspace: Node exits on these.
+process.on('unhandledRejection', logFailure('a background task'));
+process.on('uncaughtException', logFailure('a task'));
 const documents = new TextDocuments(TextDocument);
 const index = new WorkspaceIndex();
 const cache = new Map<string, { version: number; analysis: Analysis; summary: FileSummary }>();
@@ -91,21 +96,24 @@ let decoder = decoderFor(undefined);
 const listings = new ListingStore((bytes) => decoder.decode(bytes));
 const listingCache = new Map<string, { version: number; listing: Listing }>();
 
-function analyzeText(uri: string, text: string): Analysis {
+/** Parse and summarize a file. A bug, or a file nested too deep to walk, must not take the server down. */
+function analyzeFile(uri: string, text: string): { analysis: Analysis; summary: FileSummary } {
   try {
-    return analyze(text);
+    const analysis = analyze(text);
+    return { analysis, summary: summarize(analysis) };
   } catch (err) {
-    // A parser bug must not take the server down; log it and serve an empty result.
     connection.console.error(`amcl: analysis failed for ${uri}: ${(err as Error).stack ?? err}`);
-    return analyze('');
+    const analysis = analyze('');
+    return { analysis, summary: summarize(analysis) };
   }
 }
+
+const analyzeText = (uri: string, text: string): Analysis => analyzeFile(uri, text).analysis;
 
 function analysisOf(doc: TextDocument): { analysis: Analysis; summary: FileSummary } {
   const hit = cache.get(doc.uri);
   if (hit && hit.version === doc.version) return hit;
-  const analysis = analyzeText(doc.uri, doc.getText());
-  const summary = summarize(analysis);
+  const { analysis, summary } = analyzeFile(doc.uri, doc.getText());
   const entry = { version: doc.version, analysis, summary };
   cache.set(doc.uri, entry);
   index.setFile(doc.uri, summary);
@@ -194,7 +202,7 @@ async function indexFile(p: string): Promise<void> {
     index.deleteFile(uri);
     viewsMayChange(uri, undefined);
   } else {
-    const summary = summarize(analyzeText(uri, text));
+    const { summary } = analyzeFile(uri, text);
     index.setFile(uri, summary);
     viewsMayChange(uri, summary);
   }
@@ -205,7 +213,8 @@ async function loadPointDatabase(): Promise<void> {
   const files = await findFiles(roots, EB_FILE);
   const records: PointRecord[] = [];
   for (const f of files) {
-    const text = await readText(f, decoder);
+    // Exports from the TPS can hold NUL bytes inside quoted fields.
+    const text = await readText(f, decoder, true);
     if (text) records.push(...parseEb(text, f));
   }
   if (settings.hebrewDescriptors !== 'asStored') orientDescriptors(records);
@@ -292,7 +301,7 @@ connection.onInitialized(() => {
     watchers: [{ globPattern: '**/*.{CL,cl,Cl,cL,EB,eb,Eb,eB,LS,ls,Ls,lS,LE,le,Le,lE}' }],
   });
   // Database-dependent checks of documents opened during indexing need the finished index.
-  void indexWorkspace().then(republishAll);
+  void indexWorkspace().then(republishAll).catch(logFailure('indexing'));
 });
 
 connection.onNotification('amcl/settings', (next: Settings) => {
@@ -304,8 +313,8 @@ connection.onNotification('amcl/settings', (next: Settings) => {
     JSON.stringify(next.pointDatabase ?? []) !== JSON.stringify(settings.pointDatabase ?? []);
   settings = next;
   decoder = decoderFor(settings.encoding);
-  if (reloadAll) void indexWorkspace().then(republishAll);
-  else if (reloadDb) void loadPointDatabase().then(republishAll);
+  if (reloadAll) void indexWorkspace().then(republishAll).catch(logFailure('indexing'));
+  else if (reloadDb) void loadPointDatabase().then(republishAll).catch(logFailure('loading the point database'));
   else republishAll();
 });
 
@@ -316,12 +325,12 @@ connection.onDidChangeWatchedFiles(({ changes }) => {
     if (!p) continue;
     if (EB_FILE.test(p)) {
       clearTimeout(ebReload);
-      ebReload = setTimeout(() => void loadPointDatabase().then(republishAll), 500);
+      ebReload = setTimeout(() => void loadPointDatabase().then(republishAll).catch(logFailure('loading the point database')), 500);
     } else if (CL_FILE.test(p)) {
       if (c.type === FileChangeType.Deleted) {
         index.deleteFile(c.uri);
         viewsMayChange(c.uri, undefined);
-      } else void indexFile(p);
+      } else void indexFile(p).catch(logFailure(`indexing ${p}`));
       publishClosed(p);
     } else if (LISTING_FILE.test(p)) {
       listings.invalidate(p);
@@ -343,6 +352,15 @@ const lintEnvironment: LintEnvironment = {
   boxOfPoint: (p) => index.boxOfPoint(p),
 };
 
+function lintSafely(uri: string, analysis: Analysis): LintDiagnostic[] {
+  try {
+    return lint(analysis.file, analysis.binding, lintEnvironment);
+  } catch (err) {
+    connection.console.error(`amcl: checks failed for ${uri}: ${(err as Error).stack ?? err}`);
+    return [];
+  }
+}
+
 function publishDiagnostics(doc: TextDocument): void {
   const disabled = new Set(settings.disabledDiagnostics ?? []);
   if (isListing(doc)) {
@@ -352,7 +370,7 @@ function publishDiagnostics(doc: TextDocument): void {
   const { analysis } = analysisOf(doc);
   const found: LintDiagnostic[] = [
     ...analysis.diagnostics,
-    ...lint(analysis.file, analysis.binding, lintEnvironment),
+    ...lintSafely(doc.uri, analysis),
     ...longLines(doc.getText().split(/\r?\n|\r/), settings.lineLength || COMPILER_COLUMNS),
   ];
   const p = uriToPath(doc.uri);
@@ -419,7 +437,7 @@ documents.onDidClose(({ document }) => {
   // Fall back to the saved file, which may differ from the discarded edits.
   const p = uriToPath(document.uri);
   if (p) {
-    void indexFile(p);
+    void indexFile(p).catch(logFailure(`indexing ${p}`));
     publishClosed(p);
   } else index.deleteFile(document.uri);
 });

@@ -337,3 +337,28 @@ describe.skipIf(!fs.existsSync(serverPath))('language server: formatting', () =>
     expect(edits.map((e: any) => [e.range.start.line, e.newText])).toEqual([[3, '  SET B=2']]);
   });
 });
+
+describe.skipIf(!fs.existsSync(serverPath))('language server: a file too deep to check', () => {
+  let proc: ChildProcess;
+  let client: Client;
+
+  beforeAll(async () => {
+    proc = spawn(process.execPath, [serverPath, '--stdio']);
+    client = new Client(proc);
+    await client.request('initialize', { processId: null, rootUri: null, capabilities: {} });
+    client.notify('initialized', {});
+  });
+
+  afterAll(() => proc?.kill());
+
+  it('keeps serving: the checks of that file fail, not the server', async () => {
+    // Parses, but the checks recurse deeper than the stack allows.
+    const deep = `SEQUENCE D (HPM; POINT D)\nLOCAL X AT NN(1)\nPHASE P\nIF ${'NOT '.repeat(3500)}X = 1 THEN SET X = 1\nEND D`;
+    client.notify('textDocument/didOpen', { textDocument: { uri: 'file:///DEEP.CL', languageId: 'cl', version: 1, text: deep } });
+    expect(await client.waitFor('textDocument/publishDiagnostics')).toMatchObject({ uri: 'file:///DEEP.CL' });
+    client.notify('textDocument/didOpen', { textDocument: { uri: 'file:///OK.CL', languageId: 'cl', version: 1, text: 'SEQUENCE OK (HPM; POINT OK)\nPHASE P\nEND OK' } });
+    const symbols = await client.request('textDocument/documentSymbol', { textDocument: { uri: 'file:///OK.CL' } });
+    expect(symbols.map((s: any) => s.name)).toContain('OK');
+    expect(proc.exitCode).toBeNull();
+  });
+});

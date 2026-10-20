@@ -82,7 +82,20 @@ describe('format', () => {
     expect(format(['      SET X=1', '      SET Y=1', long])[2]).toBe(long);
   });
 
-  it('changes nothing when the result would lex differently', () => {
+  it('does not move code across column 132 when the rules allow longer lines', () => {
+    const long = `SET A = ${'B + '.repeat(30)}1`;
+    // Moved right, its last characters would be past what the compiler reads.
+    expect(format(['      SET X=1', '      SET Y=1', long], { maxLineLength: 200 })[2]).toBe(long);
+    // Moved left, code the compiler drops today would come into its columns.
+    const past = `          SET A = ${'B + '.repeat(30)}1`;
+    expect(past.length).toBe(139);
+    expect(format(['  SET X=1', '  SET Y=1', past], { maxLineLength: 200 })[2]).toBe(past);
+    // A comment past column 132 is no reason to stay put.
+    const commented = `SET C = 1 ${' '.repeat(120)}-- note`;
+    expect(format(['  SET X=1', '  SET Y=1', commented], { maxLineLength: 200 })[2]).toBe(`  ${commented}`);
+  });
+
+    it('changes nothing when the result would lex differently', () => {
     // An unterminated string runs to the end of the line, so trimming would change it.
     expect(formatCl('  SET A=1\n  SEND: "open   ')).toEqual([]);
   });

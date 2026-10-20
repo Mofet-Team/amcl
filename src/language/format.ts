@@ -6,6 +6,7 @@
 
 import { lex, LogicalLine, Token, TokenKind } from './lexer';
 import { RESERVED } from './parser';
+import { COMPILER_COLUMNS } from './lint';
 import { Range } from './types';
 
 export const LINE_KINDS = ['unit', 'phase', 'step', 'restart', 'declaration', 'statement', 'label', 'else', 'end'] as const;
@@ -150,8 +151,11 @@ export function formatCl(text: string, options: FormatOptions = {}, fromLine = 0
       const newGap = gap === 0 ? 0 : Math.max(1, gap + delta);
       moved.set(i, '&' + ' '.repeat(newGap) + s.slice(1 + gap));
     }
-    // Moving a statement must not push any of its lines past the column the compiler reads.
-    const fits = [...moved].every(([i, s]) => s.trimEnd().length <= Math.max(maxLength, out[i].trimEnd().length));
+    // Moving a statement must not push any of its lines past the column the compiler reads, and
+    // must not move code across it: the compiler drops what is past column 132 without a word.
+    const fits = [...moved].every(
+      ([i, s]) => s.trimEnd().length <= Math.max(maxLength, out[i].trimEnd().length) && codeEnd(s) <= COMPILER_COLUMNS && codeEnd(out[i]) <= COMPILER_COLUMNS,
+    );
     if (fits) for (const [i, s] of moved) out[i] = s;
   }
 
@@ -191,6 +195,12 @@ function sameProgram(before: string[], after: string[]): boolean {
 }
 
 /** The `--` comment of a line, outside strings, without trailing spaces. */
+/** The column after a line's last code character, its comment left out. */
+function codeEnd(line: string): number {
+  const c = comment(line);
+  return (c ? line.slice(0, line.lastIndexOf(c)) : line).trimEnd().length;
+}
+
 function comment(line: string): string {
   let inString = false;
   for (let i = 0; i < line.length - 1; i++) {

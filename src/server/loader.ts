@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
 import { TextDecoder } from 'util';
+import { URI } from 'vscode-uri';
 
 const SKIP_DIRS = new Set(['node_modules', '.git', '.svn', '.hg', '.vscode', 'out', 'dist']);
 
@@ -19,11 +19,15 @@ export function decoderFor(vscodeEncoding: string | undefined): TextDecoder {
 }
 
 export function uriToPath(uri: string): string | undefined {
-  return uri.startsWith('file:') ? fileURLToPath(uri) : undefined;
+  return uri.startsWith('file:') ? URI.parse(uri).fsPath : undefined;
 }
 
+/**
+ * A path as VS Code spells it (`file:///c%3A/…` on Windows, `$` and `(` escaped): the index and
+ * caches compare URIs as strings, and open documents come with VS Code's spelling.
+ */
 export function pathToUri(p: string): string {
-  return pathToFileURL(p).toString();
+  return URI.file(p).toString();
 }
 
 /** All files under `roots` whose name matches `re`, skipping build and VCS directories. */
@@ -58,11 +62,18 @@ export async function findFiles(roots: string[], re: RegExp): Promise<string[]> 
   return out;
 }
 
-export async function readText(p: string, decoder: TextDecoder): Promise<string | undefined> {
+/**
+ * A text file, or undefined when it cannot be read. `blankNul`: NUL bytes are read as spaces;
+ * otherwise a file with one is taken for binary and skipped.
+ */
+export async function readText(p: string, decoder: TextDecoder, blankNul = false): Promise<string | undefined> {
   try {
     const buf = await fs.promises.readFile(p);
-    // A binary file with a source extension: skip it rather than index garbage.
-    if (buf.includes(0)) return undefined;
+    if (buf.includes(0)) {
+      // A binary file with a source extension: skip it rather than index garbage.
+      if (!blankNul) return undefined;
+      for (let i = buf.indexOf(0); i >= 0; i = buf.indexOf(0, i + 1)) buf[i] = 0x20;
+    }
     return decoder.decode(buf);
   } catch {
     return undefined;
