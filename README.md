@@ -261,6 +261,15 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
+### 0.10.4
+
+- Hovers, inlay-hint tooltips and the CL Programs and Shared Storage tooltips show
+  descriptors, comments and compiler messages as written: `*AUTO*` no longer turns italic,
+  and a comment cannot make a link or load an image.
+- A settings change during indexing no longer lets the earlier scan finish last and leave
+  the old point database in place; a file opened while it is being indexed keeps its edits.
+- `.EC` files are no longer opened as CL.
+
 ### 0.10.3
 
 - Point descriptors show after each use of a point in the code, once per line and after the
