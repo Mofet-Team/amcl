@@ -443,3 +443,43 @@ describe('HPMs the database does not place', () => {
     expect(flags.map((s) => s.hpm).sort()).toEqual(hpms);
   });
 });
+
+describe('editing a file', () => {
+  /** What the index answers, in an order that does not depend on how it was built. */
+  const answers = (index: WorkspaceIndex, names: string[]) =>
+    JSON.stringify({
+      storage: [...index.storageEntries()].sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, v.map((e) => ({ ...e, point: e.point?.name }))]),
+      programs: index.programList(),
+      refs: names.map((n) => index.pointReferences(n, true)),
+      params: ['PRMODNIM', 'PM_BOX', 'DICMPNIM', 'NUMERNIM'].map((t) => [...index.parameterUse(t)].sort()),
+      networks: FILES.map((f) => index.networkOfFile(f)),
+    });
+
+  it('answers as an index built afresh, whether the edit is patched in or rebuilds it', () => {
+    const db = parseEb(read('db/HPM09.EB'), 'HPM09.EB');
+    const texts = new Map(FILES.map((f) => [f, read(f)]));
+    const edited = new WorkspaceIndex();
+    edited.setPoints(db, (f) => f);
+    for (const [f, t] of texts) edited.setFile(f, summarize(analyze(t)));
+    const names = ['MIXER', 'DOSER', 'TANK_LVL', 'ARR1', 'XV1', 'FT100', 'NEWPT'];
+    answers(edited, names);
+    const edits: [string, (t: string) => string][] = [
+      // Inside a phase: patched.
+      ['MIXER.CL', (t) => t.replace('SET AGITATE = ON', 'SET AGITATE = ON\n    SET !BOX.FL(22) = ON\n    SET DOSER.NN(7) = 1')],
+      ['MIXER.CL', (t) => t.replace('LOCAL LEVEL AT !BOX.NN(300)', 'LOCAL LEVEL AT !BOX.NN(301)')],
+      ['MIXER.CL', (t) => t.replace('    IF ARR1.FL(2) = ON THEN SET LEVEL = 0\n', '')],
+      ['DOSER.CL', (t) => `\n\n${t}`],
+      // A LOCAL on another program's point, and a new point: the topology changes.
+      ['MIXER.CL', (t) => t.replace('LOCAL LEVEL', 'LOCAL SPARE AT DOSER.NN(9)\n    LOCAL LEVEL')],
+      ['MIXER.CL', (t) => t.replace('EXTERNAL !BOX,', 'EXTERNAL NEWPT, !BOX,')],
+    ];
+    for (const [f, edit] of edits) {
+      texts.set(f, edit(texts.get(f)!));
+      edited.setFile(f, summarize(analyze(texts.get(f)!)));
+      const fresh = new WorkspaceIndex();
+      fresh.setPoints(db, (x) => x);
+      for (const [g, t] of texts) fresh.setFile(g, summarize(analyze(t)));
+      expect(answers(edited, names)).toBe(answers(fresh, names));
+    }
+  });
+});

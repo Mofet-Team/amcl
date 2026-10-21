@@ -41,6 +41,8 @@ interface Derived {
   networkOfFolder: Map<string, string>;
   /** CL file -> the LCN of the points it references. */
   networkOfFile: Map<string, string>;
+  /** CL file -> its place among the files, which orders the entries of each table. */
+  order: Map<string, number>;
 }
 
 /** A point connected to an I/O channel. */
@@ -71,10 +73,17 @@ export class WorkspaceIndex {
   private readonly pointUris = new Map<PointRecord, string>();
   private networks: NetworkConfig[] = [];
   private derived: Derived | undefined;
+  /** Point database folder -> the UCN numbers of its points. */
+  private folderUcns = new Map<string, Set<number>>();
+  /** Tables of the point database alone, for one placement of its folders on LCNs. */
+  private pointTables: { networks: string; hardware: Derived['hardware']; boxPoints: [string, StorageEntry][] } | undefined;
 
   setFile(uri: string, summary: FileSummary): void {
+    const old = this.files.get(uri);
     this.files.set(uri, summary);
-    this.derived = undefined;
+    // Typing rarely changes what places programs and points; then only this file's entries change.
+    if (this.derived && old && this.topology(old) === this.topology(summary)) this.patch(uri, old, summary, this.derived);
+    else this.derived = undefined;
   }
 
   deleteFile(uri: string): void {
@@ -103,6 +112,13 @@ export class WorkspaceIndex {
       this.points.set(r.name, r);
       this.pointUris.set(r, uriOf(r.file));
     }
+    this.folderUcns = new Map();
+    for (const p of this.points.values()) {
+      const ucns = this.folderUcns.get(folderOf(p.file)) ?? this.folderUcns.set(folderOf(p.file), new Set()).get(folderOf(p.file))!;
+      const ucn = fieldNumber(p, 'NTWKNUM');
+      if (ucn !== undefined) ucns.add(ucn);
+    }
+    this.pointTables = undefined;
     this.derived = undefined;
   }
 
@@ -346,29 +362,11 @@ export class WorkspaceIndex {
 
     const storage: Derived['storage'] = new Map();
     const parameterUse: Derived['parameterUse'] = new Map();
-    for (const s of this.files.values()) {
-      for (const m of s.members) {
-        const type = this.points.get(m.point)?.type ?? (/^(!BOX|\$NM\d+[NB]\d+)$/.test(m.point) ? 'PM_BOX' : undefined);
-        if (!type) continue;
-        const counts = parameterUse.get(type) ?? new Map<string, number>();
-        counts.set(m.param, (counts.get(m.param) ?? 0) + m.count);
-        parameterUse.set(type, counts);
-      }
-    }
-    const hardware: Derived['hardware'] = new Map();
-    for (const p of this.points.values()) {
-      const io = ioOf(p);
-      const box = this.boxKey(p, partial);
-      if (!io || !box) continue;
-      if (io.channel) push(hardware, `${box}|${io.channel.address}`, { point: p, role: 'channel', box });
-      for (const [role, refs] of [['input', io.inputs], ['output', io.outputs]] as const) {
-        for (const ref of refs) {
-          const [address, param] = ref.toUpperCase().split('.');
-          if (HARDWARE_NAME.test(address)) push(hardware, `${box}|${address}`, { point: p, role, param, box });
-        }
-      }
-    }
-    const derived: Derived = { programs, pointRefs, storage, hpm, groupBox, parameterUse, hardware, networkOfFolder, networkOfFile: new Map() };
+    for (const s of this.files.values()) this.countMembers(s, parameterUse, 1);
+    const tables = this.tablesOfPoints(partial);
+    const hardware = tables.hardware;
+    const order = new Map([...this.files.keys()].map((uri, i) => [uri, i]));
+    const derived: Derived = { programs, pointRefs, storage, hpm, groupBox, parameterUse, hardware, networkOfFolder, networkOfFile: new Map(), order };
     for (const [uri, s] of this.files) {
       const net = this.networkOfSummary(s, derived);
       if (net) derived.networkOfFile.set(uri, net);
@@ -377,18 +375,115 @@ export class WorkspaceIndex {
         if (key) push(storage, key, { uri, range: u.range, kind: u.local ? 'local' : 'use', local: u.local, written: u.written });
       }
     }
+    for (const [key, entry] of tables.boxPoints) push(storage, key, entry);
+    this.derived = derived;
+    return derived;
+  }
+
+  /**
+   * I/O channels and box Numeric and Flag points, which depend on the point database and on which
+   * LCN each of its folders is on, not on the CL files: kept while that placement stays.
+   */
+  private tablesOfPoints(d: Pick<Derived, 'networkOfFolder'>): NonNullable<WorkspaceIndex['pointTables']> {
+    const networks = JSON.stringify([...d.networkOfFolder]);
+    if (this.pointTables?.networks === networks) return this.pointTables;
+    const hardware: Derived['hardware'] = new Map();
+    const push = (k: string, v: HardwareUse) => (hardware.get(k) ?? hardware.set(k, []).get(k)!).push(v);
+    for (const p of this.points.values()) {
+      const io = ioOf(p);
+      const box = this.boxKey(p, d);
+      if (!io || !box) continue;
+      if (io.channel) push(`${box}|${io.channel.address}`, { point: p, role: 'channel', box });
+      for (const [role, refs] of [['input', io.inputs], ['output', io.outputs]] as const) {
+        for (const ref of refs) {
+          const [address, param] = ref.toUpperCase().split('.');
+          if (HARDWARE_NAME.test(address)) push(`${box}|${address}`, { point: p, role, param, box });
+        }
+      }
+    }
     // Box Numeric and Flag points are named views of one box element.
+    const boxPoints: [string, StorageEntry][] = [];
     for (const p of this.points.values()) {
       if (p.type !== 'NUMERNIM' && p.type !== 'FLAGNIM') continue;
-      const box = this.boxKey(p, derived);
+      const box = this.boxKey(p, d);
       const slot = fieldNumber(p, 'SLOTNUM');
       const loc = this.pointLocation(p.name);
       if (box && slot !== undefined && loc) {
-        push(storage, `BOX:${box}:${p.type === 'NUMERNIM' ? 'NN' : 'FL'}:${slot}`, { uri: loc.uri, range: loc.range, kind: 'point', point: p });
+        boxPoints.push([`BOX:${box}:${p.type === 'NUMERNIM' ? 'NN' : 'FL'}:${slot}`, { uri: loc.uri, range: loc.range, kind: 'point', point: p }]);
       }
     }
-    this.derived = derived;
-    return derived;
+    this.pointTables = { networks, hardware, boxPoints };
+    return this.pointTables;
+  }
+
+  /**
+   * What of a file the derived tables depend on beyond its own entries: its programs and bound
+   * points, the LOCALs that put two programs in one HPM, and the database folders of the points it
+   * names, which place it and them on an LCN.
+   */
+  private topology(s: FileSummary): string {
+    const folders = new Set<string>();
+    let first: string | undefined;
+    for (const n of [...s.programs.flatMap((p) => (p.point ? [p.point] : [])), ...s.pointRefs.map((r) => r.name)]) {
+      const rec = this.points.get(n);
+      if (!rec || n.startsWith('$')) continue;
+      const f = folderOf(rec.file);
+      first ??= f;
+      folders.add(f);
+    }
+    return JSON.stringify([
+      s.programs.map((p) => [p.kind, p.point]),
+      s.storage.filter((u) => u.local && u.bound && u.point).map((u) => [u.bound, u.point]),
+      first,
+      [...folders].sort(),
+    ]);
+  }
+
+  /** Replace one file's entries in the tables, where a full derivation would put them. */
+  private patch(uri: string, old: FileSummary, next: FileSummary, d: Derived): void {
+    const at = d.order.get(uri)!;
+    const replace = <V extends { uri: string }>(m: Map<string, V[]>, before: [string, V][], after: [string, V][], ours = (_: V) => true) => {
+      const fresh = new Map<string, V[]>();
+      for (const [k] of before) fresh.set(k, []);
+      for (const [k, v] of after) (fresh.get(k) ?? fresh.set(k, []).get(k)!).push(v);
+      for (const [k, added] of fresh) {
+        const kept = (m.get(k) ?? []).filter((v) => !(ours(v) && v.uri === uri));
+        // Entries go in file order, and entries of no file (database points) after them.
+        let i = kept.findIndex((v) => !ours(v) || (d.order.get(v.uri) ?? Infinity) > at);
+        if (i < 0) i = kept.length;
+        kept.splice(i, 0, ...added);
+        if (kept.length) m.set(k, kept);
+        else m.delete(k);
+      }
+    };
+    const programs = (s: FileSummary) =>
+      s.programs.flatMap((p) => (p.point ? [[p.point, { uri, name: p.name, range: p.nameRange, kind: p.kind }] as [string, { uri: string; name: string; range: Range; kind: string }]] : []));
+    replace(d.programs, programs(old), programs(next));
+    const refs = (s: FileSummary) => s.pointRefs.map((r) => [r.name, { uri, range: r.range, isDeclaration: r.isDeclaration }] as [string, { uri: string; range: Range; isDeclaration: boolean }]);
+    replace(d.pointRefs, refs(old), refs(next));
+    const net = d.networkOfFile.get(uri);
+    const storage = (s: FileSummary) =>
+      s.storage.flatMap((u) => {
+        const key = this.resolve(u, d, net);
+        return key ? [[key, { uri, range: u.range, kind: u.local ? 'local' : 'use', local: u.local, written: u.written } as StorageEntry] as [string, StorageEntry]] : [];
+      });
+    replace(d.storage, storage(old), storage(next), (e) => e.kind !== 'point');
+    this.countMembers(old, d.parameterUse, -1);
+    this.countMembers(next, d.parameterUse, 1);
+  }
+
+  /** Add (`sign` 1) or take away (-1) a file's parameter uses. */
+  private countMembers(s: FileSummary, parameterUse: Derived['parameterUse'], sign: 1 | -1): void {
+    for (const m of s.members) {
+      const type = this.points.get(m.point)?.type ?? (/^(!BOX|\$NM\d+[NB]\d+)$/.test(m.point) ? 'PM_BOX' : undefined);
+      if (!type) continue;
+      const counts = parameterUse.get(type) ?? new Map<string, number>();
+      const n = (counts.get(m.param) ?? 0) + sign * m.count;
+      if (n) counts.set(m.param, n);
+      else counts.delete(m.param);
+      if (counts.size) parameterUse.set(type, counts);
+      else parameterUse.delete(type);
+    }
   }
 
   private isProcessModule(name: string, programs: Derived['programs']): boolean {
@@ -405,7 +500,7 @@ export class WorkspaceIndex {
    */
   private inferNetworks(): Map<string, string> {
     const groups = new UnionFind();
-    for (const p of this.points.values()) groups.union(folderOf(p.file), folderOf(p.file));
+    for (const f of this.folderUcns.keys()) groups.union(f, f);
     for (const s of this.files.values()) {
       let first: string | undefined;
       const names = [...s.pointRefs.map((r) => r.name), ...s.programs.flatMap((p) => (p.point ? [p.point] : []))];
@@ -423,11 +518,11 @@ export class WorkspaceIndex {
       members.set(root, [...(members.get(root) ?? []), f]);
     }
     const ucnsOf = new Map<string, Set<number>>();
-    for (const p of this.points.values()) {
-      const ucn = fieldNumber(p, 'NTWKNUM');
-      if (ucn === undefined) continue;
-      const root = groups.find(folderOf(p.file));
-      ucnsOf.set(root, (ucnsOf.get(root) ?? new Set()).add(ucn));
+    for (const [f, ucns] of this.folderUcns) {
+      if (!ucns.size) continue;
+      const root = groups.find(f);
+      const all = ucnsOf.get(root) ?? ucnsOf.set(root, new Set()).get(root)!;
+      for (const u of ucns) all.add(u);
     }
     const out = new Map<string, string>();
     const roots = [...members.keys()].sort();
@@ -504,9 +599,13 @@ export class WorkspaceIndex {
   }
 }
 
+const folders = new Map<string, string>();
+
 /** The folder of a point database file: the unit of LCN membership. */
 function folderOf(file: string): string {
-  return file.replace(/[\\/][^\\/]*$/, '');
+  let f = folders.get(file);
+  if (f === undefined) folders.set(file, (f = file.replace(/[\\/][^\\/]*$/, '')));
+  return f;
 }
 
 /** A box key for people: `HPM 01/09 (LCN A)`, or an inferred group. */
