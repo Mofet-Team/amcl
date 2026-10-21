@@ -63,7 +63,8 @@
       },
       "[cl-listing]": {
         "files.encoding": "windows1255",
-        "editor.insertSpaces": true
+        "editor.insertSpaces": true,
+        "editor.inlayHints.enabled": "offUnlessPressed"
       }
     },
     "configuration": {

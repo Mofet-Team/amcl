@@ -281,6 +281,16 @@ describe.skipIf(!fs.existsSync(serverPath))('language server: compiler listings'
     expect(note.contents.value).toMatch(/pass 2/);
   });
 
+  it('shows the inlay hints of the source on the lines of a listing', async () => {
+    const uri = uriOf('HEATER.LS');
+    const range = { start: { line: 0, character: 0 }, end: { line: 30, character: 0 } };
+    const hints = await client.request('textDocument/inlayHint', { textDocument: { uri }, range });
+    // `SET TEMP = TIC1.PV` on listing line 14: TEMP is NN(1), after its last letter at 14 + 12.
+    expect(hints.map((h: any) => [h.position.line, h.position.character, h.label])).toEqual([[14, 26, 'NN(1)']]);
+    const none = await client.request('textDocument/inlayHint', { textDocument: { uri }, range: { start: { line: 0, character: 0 }, end: { line: 13, character: 0 } } });
+    expect(none).toEqual([]);
+  });
+
   it('serves hovers and definitions in an error listing from its source file', async () => {
     const uri = uriOf('VALVE.LE');
     // Line 2 is `     4            SET XV2.OP =`: XV2 is at column 14 + 8.

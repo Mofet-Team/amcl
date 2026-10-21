@@ -587,9 +587,24 @@ connection.onHover(({ textDocument, position }) => {
   );
 });
 
-connection.languages.inlayHint.on(({ textDocument, range }) =>
-  withDoc(textDocument.uri, [], (_doc, analysis, summary) => inlayHints(analysis, summary, index, range, settings.inlayHints ?? { locals: true, points: true })),
-);
+connection.languages.inlayHint.on(({ textDocument, range }) => {
+  const options = settings.inlayHints ?? { locals: true, points: true };
+  const doc = documents.get(textDocument.uri);
+  if (doc && isListing(doc)) {
+    // The hints of the source, on the lines the listing shows, which is how engineers read a program.
+    const view = viewOf(doc);
+    if (!view) return [];
+    const listed = doc.getText().split(/\r?\n|\r/);
+    const all = { start: { line: 0, character: 0 }, end: { line: view.lines.length, character: 0 } };
+    return inlayHints(view.analysis, view.summary, index, all, options).flatMap((h) => {
+      const at = view.toListing({ start: h.position, end: h.position })?.start;
+      // A line the listing cut at its page width has no room after the cut.
+      if (!at || at.line < range.start.line || at.line > range.end.line || at.character > (listed[at.line] ?? '').trimEnd().length) return [];
+      return [{ ...h, position: at }];
+    });
+  }
+  return withDoc(textDocument.uri, [], (_doc, analysis, summary) => inlayHints(analysis, summary, index, range, options));
+});
 
 connection.onCompletion(({ textDocument, position }) =>
   withDoc(textDocument.uri, null, (doc, analysis) =>
