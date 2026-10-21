@@ -107,8 +107,8 @@ parameter lists and enumerations.
     line without a message. A ruler marks the column. `amcl.lineLength` sets a lower limit, for
     an editor or file transfer that cuts lines sooner; comments past it are not reported.
   - Warnings the compiler does not give: messages longer than the 60 characters the CRT shows,
-    subroutines nested deeper than one level, `WAIT` on an absolute time, and access to a point
-    the point database places in another node (only READ, WRITE and INITIATE reach it).
+    subroutines nested deeper than one level, `WAIT` on an absolute time, and an EXTERNAL point
+    the point database places on another UCN (`external-ucn`).
     Two LOCALs mapped on the same `NN` or `FL` element (`local-alias`): the compiler accepts
     the alias, but a store through one name changes the other. A name for an element of a LOCAL
     array is only noted.

@@ -199,7 +199,7 @@ class Linter {
   // ---------------------------------------------------------------- statements
 
   private statement(s: Statement, unit: Unit, dialect: Dialect | undefined, bound: string | undefined, topLevel: boolean): void {
-    const e = (x: Expr | undefined) => x && this.expressions(x, unit, dialect, bound, s);
+    const e = (x: Expr | undefined) => x && this.expressions(x, unit, dialect, bound);
     const nested = (x: Statement) => this.statement(x, unit, dialect, bound, false);
 
     if (dialect === 'AM' && AM_FORBIDDEN[s.kind]) {
@@ -223,16 +223,13 @@ class Linter {
         break;
       case 'read':
       case 'write':
-        // Remote points are allowed here: these are the statements that reach other nodes.
-        s.targets.forEach((x) => this.expressions(x, unit, dialect, bound, s, true));
-        s.sources.forEach((x) => this.expressions(x, unit, dialect, bound, s, true));
+        s.targets.forEach(e);
+        s.sources.forEach(e);
         if (s.onError) nested(s.onError.statement);
         break;
       case 'stateChange':
         s.targets.forEach(e);
         if (dialect && dialect !== 'AM') this.stateChange(s);
-        // State change targets must be in this HPM (HP27-610 §3.2.5).
-        for (const t of s.targets) if (t.kind === 'name') this.remoteAccess(t.id, unit, dialect, bound, s);
         if (s.onError) nested(s.onError.statement);
         break;
       case 'if':
@@ -782,10 +779,10 @@ class Linter {
   // ---------------------------------------------------------------- expressions
 
   /**
-   * Checks inside one expression tree: string length, mixed AND/OR, storage ranges, and access
-   * to points on other UCN nodes.
+   * Checks inside one expression tree: string length, mixed AND/OR, storage ranges, and the
+   * parameters of points.
    */
-  private expressions(root: Expr, unit: Unit, dialect: Dialect | undefined, bound: string | undefined, stmt?: Statement, remoteAllowed = false): void {
+  private expressions(root: Expr, unit: Unit, dialect: Dialect | undefined, bound: string | undefined): void {
     walkExpr(root, (x) => {
       if (x.kind === 'string') this.stringLength(x);
       if (x.kind === 'binary' && LOGICAL_OPS.has(x.op)) {
@@ -807,7 +804,6 @@ class Linter {
           this.pointDeclared(x.object.id, bound);
         }
         this.boundPrefix(x.object.id, bound, dialect);
-        if (!remoteAllowed) this.remoteAccess(x.object.id, unit, dialect, bound, stmt);
       }
     });
   }
@@ -841,29 +837,6 @@ class Linter {
   private boundPrefix(id: Ident, bound: string | undefined, dialect: Dialect | undefined): void {
     if (bound && dialect !== 'AM' && id.name === bound) {
       this.report(id.range, 'external-bound', `${id.text} is this program's own point: write its parameters without the name`, Severity.Error);
-    }
-  }
-
-  /**
-   * A point in another node on the same UCN can only be reached with READ, WRITE or INITIATE
-   * [HP27-610 §2.5]. Needs the point database to know where each point lives.
-   */
-  private remoteAccess(id: Ident, _unit: Unit, dialect: Dialect | undefined, bound: string | undefined, stmt: Statement | undefined): void {
-    if (!this.env || !bound || !stmt || dialect === 'AM' || dialect === undefined) return;
-    if (id.name.startsWith('!') || id.name.startsWith('$')) return;
-    const own = this.env.boxOfProgram(bound);
-    const p = this.env.point(id.name);
-    if (!own || !p || p.fields.NODETYP === undefined) return;
-    const box = this.env.boxOfPoint(p);
-    if (box && box !== own) {
-      // A warning, not an error: it is only as current as the point database. Points move
-      // between HPMs, and older listings compiled against the old placement.
-      this.report(
-        id.range,
-        'remote-access',
-        `The point database places ${id.text} in ${formatBox(box)}, not this program's ${formatBox(own)}: only READ, WRITE and INITIATE can reach another node (HP27-610 §2.5)`,
-        Severity.Warning,
-      );
     }
   }
 

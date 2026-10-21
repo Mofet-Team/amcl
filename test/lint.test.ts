@@ -135,10 +135,9 @@ describe('lint', () => {
       boxOfPoint: (p) => `A/${Number(p.fields.NTWKNUM)}:${p.fields.NODENUM}`,
     };
 
-    it('warns about access to a point the database places in another node', () => {
-      const src = hpm('SET NEAR.MODATTR = PROGRAM\nSET FAR.MODATTR = PROGRAM\nCLOSE FAR\nREAD NN(1) FROM FAR.PV\nINITIATE FARPM', 'EXTERNAL NEAR, FAR, FARPM');
-      expect(codes(src, env)).toEqual(['remote-access', 'remote-access']);
-      expect(check(src, env)[0]).toMatch(/places FAR in HPM 01\/07 \(LCN A\), not this program's HPM 01\/09 \(LCN A\)/);
+    it('accepts any statement on a point in another HPM of the same UCN, as the compiler does', () => {
+      const src = hpm('SET FAR.MODATTR = PROGRAM\nCLOSE FAR\nIF FAR.PV = ON THEN SET NN(1) = 1\nWAIT FAR.PV = ON\nREAD NN(1) FROM FAR.PV\nINITIATE FARPM', 'EXTERNAL NEAR, FAR, FARPM\nLOCAL X AT NN(1)');
+      expect(codes(src, env).filter((c) => c !== 'unused')).toEqual([]);
     });
 
     const dbFound = (src: string) => check(src, env).filter((m) => /^(parameter|read-only|initiate|external-ucn|prefetch)/.test(m));

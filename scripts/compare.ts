@@ -142,30 +142,3 @@ for (const [code, e] of others) {
   for (const x of e.ex) console.log(`      ${x}`);
 }
 
-// Programs whose header comment names a different HPM than the point database: a moved point.
-if (process.env.AMCL_HPM_CHECK) {
-  const byFile = new Map<string, number>();
-  for (const [f, text] of texts) {
-    if (!verified.has(f)) continue;
-    const analysis = analyze(text);
-    const n = lint(analysis.file, analysis.binding, env).filter((d) => d.code === 'remote-access').length;
-    if (n) byFile.set(f, n);
-  }
-  let moved = 0;
-  let same = 0;
-  for (const [f, n] of byFile) {
-    const text = texts.get(f)!;
-    const header = /HPM\.?\s*0?(\d+)/i.exec(text.split(/\r?\n/).slice(0, 3).join(' '))?.[1];
-    const bound = analyze(text).file.units.find((u) => u.kind === 'sequence') as { point?: { name: string } } | undefined;
-    const db = bound?.point && index.point(bound.point.name)?.fields.NODENUM;
-    const differs = header !== undefined && db !== undefined && Number(header) !== Number(db);
-    if (differs) moved += n;
-    else {
-      same += n;
-      const ls = fs.readFileSync(f.replace(/\.cl$/i, (e) => (e === '.CL' ? '.LS' : '.ls')), 'latin1');
-      const date = /(\d\d)\/(\d\d)\/(\d\d) \d\d:/.exec(ls)?.slice(1).join('/');
-      console.log(`  same HPM per header: ${path.relative(clDir, f)} (header HPM ${header}, database node ${db}, compiled ${date}): ${n}`);
-    }
-  }
-  console.log(`remote-access in all files: ${moved + same}; in programs whose header names another HPM than the database: ${moved}`);
-}
