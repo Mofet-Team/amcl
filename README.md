@@ -164,8 +164,9 @@ parameter lists and enumerations.
   `!BOX.FL(3)`); for an array, the element (`A(2)` is `NN(6)`) or the range it covers
   (`NN(5..7)`). After each use of a point (once per line, after the whole `TAG.PV`), its EXTERNAL
   entry and the bound point, its descriptor from the point database, or its `[type]` when it
-  has none. They show while Ctrl+Alt (Ctrl+Option on a Mac) is held; to show them always, set
-  `"[cl]": { "editor.inlayHints.enabled": "on" }`. `amcl.inlayHints.locals` and
+  has none. Compiler listings (`.LS`, `.LE`) show the same hints on their source lines. They show
+  while Ctrl+Alt (Ctrl+Option on a Mac) is held; to show them always, set
+  `"[cl]": { "editor.inlayHints.enabled": "on" }` (and `"[cl-listing]"` for listings). `amcl.inlayHints.locals` and
   `amcl.inlayHints.points` turn each kind off.
 - **CL Programs** view in the Explorer: every program of the workspace by where it runs, LCN and
   HPM (UCN/node), then each program's phases with their steps, handlers and subroutines. A
@@ -264,6 +265,15 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
+### 0.10.6
+
+- Inlay hints in compiler listings (`.LS`, `.LE`): LOCAL slots and point descriptors on the
+  listed source lines, beside the line numbers the controller reports. Held Ctrl+Alt shows them,
+  as in CL files.
+- The `remote-access` warning is gone. A sequence can SET, IF, WAIT, CLOSE and so on a point in
+  another HPM of the same UCN: the compiler accepts it, and it did in 298 places in compiled
+  code. A point on another UCN is still reported, on its EXTERNAL (`external-ucn`).
+
 ### 0.10.5
 
 - A file whose SEQUENCE heading is commented out gets one "missing heading" error, not one
