@@ -265,6 +265,14 @@ The extension sets these for the `cl` language only. Override them under `"[cl]"
 Bug reports are welcome!
 
 ## Release Notes
+### 0.10.7
+
+- Typing no longer rebuilds the cross-file index: an edit updates only that file's entries, in
+  about 4 ms on a 3,000-line program instead of 350 ms over a 1,600-file workspace, so
+  diagnostics, hovers and inlay hints keep up. Edits that move a program, add a LOCAL on
+  another program's point or name points from another database folder rebuild it, now in
+  140 ms.
+
 ### 0.10.6
 
 - Inlay hints in compiler listings (`.LS`, `.LE`): LOCAL slots and point descriptors on the
